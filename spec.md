@@ -47,6 +47,7 @@ tuple_type := "(" type (("," type)* | "," ) ")"
   - [ ] tokenizer
   - [ ] parser
   - [ ] ast
+  - [ ] hicr
   - [ ] codegen
 * [ ] Data type documentations
   - [ ] main
@@ -55,6 +56,7 @@ tuple_type := "(" type (("," type)* | "," ) ")"
   - [ ] tokenizer
   - [ ] parser
   - [ ] ast
+  - [ ] hicr
   - [ ] codegen
 * In-code documentation
   - [ ] main
@@ -63,12 +65,14 @@ tuple_type := "(" type (("," type)* | "," ) ")"
   - [ ] tokenizer
   - [ ] parser
   - [ ] ast
+  - [ ] hicr
   - [ ] codegen
 
 # Required tests:
+* [ ] (StreamReader?)
 * [ ] FileMap
 * [ ] Tokenizer
 * [ ] Parser
-* [ ] Validator
+* [ ] Hicr
 * [ ] Codegen
 
