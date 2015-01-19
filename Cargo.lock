@@ -1,0 +1,12 @@
+[root]
+name = "proxam"
+version = "0.0.1"
+dependencies = [
+ "version 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "version"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+

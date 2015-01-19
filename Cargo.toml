@@ -1,0 +1,8 @@
+[package]
+
+name = "proxam"
+version = "0.0.1"
+authors = ["nulldata"]
+
+[dependencies]
+version = "*"
