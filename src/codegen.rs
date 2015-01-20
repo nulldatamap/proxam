@@ -37,7 +37,7 @@ pub fn generate_module( name : &str, module : Module ) -> ModuleRef {
 fn generate_fn( ctx : ContextRef, fname : &str
               , func : Function, module : ModuleRef ) {
   unsafe {
-    let ftype = get_type( ctx, func.ty.to_fn() );
+    let ftype = get_bare_type( ctx, func.ty.to_fn() );
     let cname = CString::from_slice( fname.as_bytes() );
     let f = llvm::LLVMGetOrInsertFunction( module, cname.as_ptr(), ftype );
     
@@ -57,7 +57,7 @@ fn generate_fn( ctx : ContextRef, fname : &str
   }
 }
 
-fn get_fn_type( ctx : ContextRef, args : Vec<Type>, ret : Type ) -> TypeRef {
+fn get_bare_fn_type( ctx : ContextRef, args : Vec<Type>, ret : Type ) -> TypeRef {
   let targs : Vec<TypeRef> = args.into_iter()
                                  .map( |t| get_type( ctx, t ) )
                                  .collect();
@@ -67,12 +67,25 @@ fn get_fn_type( ctx : ContextRef, args : Vec<Type>, ret : Type ) -> TypeRef {
   }
 }
 
+fn get_fn_type( ctx : ContextRef, args : Vec<Type>, ret : Type ) -> TypeRef {
+  unsafe {
+    llvm::LLVMPointerType( get_bare_fn_type( ctx, args, ret ), 0 )
+  }
+}
+
 fn get_type( ctx : ContextRef, ty : Type ) -> TypeRef {
   match ty {
     Type::Builtin( bit ) => get_builtin_type( ctx, bit ),
     Type::Tuple( el ) => get_tuple_type( ctx, el ),
     Type::Unit => unit_type( ctx ),
     Type::Fn( args, ret ) => get_fn_type( ctx, args, *ret )
+  }
+}
+
+fn get_bare_type( ctx : ContextRef, ty : Type ) -> TypeRef {
+  match ty {
+    Type::Fn( args, ret ) => get_bare_fn_type( ctx, args, *ret ),
+    v => get_type( ctx, v )
   }
 }
 

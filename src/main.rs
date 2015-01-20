@@ -18,8 +18,8 @@ fn main() {
   println!( "Proxam compiler v{}", version!() );
 
   let test_src = "\
-magic : !\n\
-magic x y z = !";
+magic : int -> int\n\
+magic x = !";
   let test_name = "<test>";
   let test_module_name = "helloworld";
 
@@ -58,6 +58,8 @@ magic x y z = !";
       return
     }
   };
+
+  println!("=> {:?}", module );
 
   let llmodule = codegen::generate_module( test_module_name, module );
 

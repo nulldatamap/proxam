@@ -4,8 +4,6 @@ use streamreader::StreamReader;
 
 use filemap::{CharLoc, CharOffset, Loc};
 
-// BRB
-
 
 #[derive(Show, PartialEq, Eq, Clone)]
 pub enum TokenKind {
@@ -14,9 +12,6 @@ pub enum TokenKind {
   Symbol( String ),
   EOF,
 }
-
-// The 'a makes sure that our token can only live
-// as long as our reference to the source name is valid.
 
 #[derive(Show, PartialEq, Eq, Clone)]
 pub struct Token {

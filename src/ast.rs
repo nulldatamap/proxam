@@ -16,7 +16,7 @@ pub enum Type {
 }
 
 impl Type {
-  fn argument_count( &self ) -> u32 {
+  pub fn argument_count( &self ) -> u32 {
     match self {
       &Type::Fn( ref args, _ ) => args.len() as u32,
       _ => 0

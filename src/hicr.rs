@@ -15,6 +15,7 @@ pub enum HicrError {
 
 type HResult<T> = Result<T, HicrError>;
 
+#[derive(Show)]
 pub struct Module {
   pub functions : HashMap<String, Function>,
   // data structures
@@ -36,6 +37,11 @@ pub fn validate_module( mod_items : Vec<ModuleItem> ) -> HResult<Module> {
   for mod_item in mod_items.into_iter() {
     try!( add_fn_entry( &mut fn_table, mod_item ) );
   }
+
+  for (fn_name, decl_body) in fn_table.into_iter() {
+    module.functions.insert( fn_name, try!( make_fn( decl_body ) ) );
+  }
+
   Ok( module )
 }
 
@@ -85,6 +91,37 @@ fn add_fn_entry( table : &mut HashMap<String, FEntry>, item : ModuleItem )
   Ok( () )
 }
 
+fn make_fn( decl_body : FEntry ) -> HResult<Function> {
+  match decl_body {
+    (None, Some( body )) => {
+      return Err( HicrError::UndeclaredFunction( body ) )
+    },
+    (Some( decl ), obody) => {
+      let arg_names;
+      let fnbody = if let Some( body ) = obody {
+        if decl.ty.argument_count() != body.args.len() as u32 {
+          return Err( HicrError::FunctionTypeNotMatching( body, decl ) )
+        }
+        arg_names = body.args.into_iter()
+                             .map( |v| v.text )
+                             .collect();
+        /*Some( decl.body )*/
+        None
+      } else {
+        arg_names = range( 0, decl.ty.argument_count() )
+                    .map( |i| format!( "_{}", i ) )
+                    .collect();
+        None
+      };
+      Ok( Function { ty: decl.ty
+                   , arg_names: arg_names
+                   , body: fnbody } )
+    },
+    inv => panic!( "Reached invalid pattern: {:?}", inv )
+  }
+}
+
+#[derive(Show)]
 pub struct Function {
   pub ty   : Type,
   pub arg_names : Vec<String>,

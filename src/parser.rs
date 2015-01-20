@@ -5,7 +5,7 @@ use filemap::{CharLoc, CharOffset};
 use streamreader::{StreamReader, Checkpoint};
 use tokenizer::{Token, TokenKind};
 use ast::{ModuleItem, FunctionBody, Ident, Type, FunctionDecl
-         , ToModuleItem};
+         , ToModuleItem, BuiltinType};
 
 pub struct Parser<'a> {
   items   : Iter<'a, Token>,
@@ -129,13 +129,72 @@ impl<'a> Parser<'a> {
   }
 
   fn any_type( &mut self ) -> PResult<Type> {
-    let first = try!( self.try_current() );
-    if !first.is_symbol( "!" ) {
-      Err( ParserError::SyntaxError( first.clone(), "a type", "'!'" ) )
-    } else {
+    if self.get_current().is_symbol( "(" ) {
       self.next();
-      Ok( Type::Unit )
+
+      let ty = try!( self.fn_type() );
+      if !self.get_current().is_symbol( ")" ) {
+        return Err( ParserError::SyntaxError( self.get_current().clone()
+                                            , "type", "')'" ) )
+      }
+      self.next();
+      
+      Ok( ty )
+    } else {
+      self.fn_type()
     }
+  }
+
+  fn fn_type( &mut self ) -> PResult<Type> {
+    let start_ty = try!( self._type() );
+    
+    let start = self.get_current();
+    if !( start.is_symbol( "->" ) || start.is_symbol( "," ) ) {
+      return Ok( start_ty )
+    }
+
+    let mut args = vec![ start_ty ];
+
+    while self.get_current().is_symbol( "," ) {
+      self.next();
+      args.push( try!( self.any_type() ) );
+    }
+
+    if !self.get_current().is_symbol( "->" ) {
+      return Err( ParserError::SyntaxError( self.get_current().clone()
+                                          , "function type"
+                                          , "'->'" ) )
+    }
+
+    self.next();
+
+    let ret = try!( self.any_type() );
+
+    let ty = Type::Fn( args, Box::new( ret ) );
+
+    Ok( ty )
+  }
+
+  fn _type( &mut self ) -> PResult<Type> {
+    self.builtin_type()
+  }
+
+  fn builtin_type( &mut self ) -> PResult<Type> {
+    let first = self.get_current();
+    if !first.is_ident() {
+      return Err( ParserError::SyntaxError( first.clone()
+                                          , "type"
+                                          , "a builtin type" ) )
+    }
+    let ret = match &first.get_text()[] {
+      "int" => Ok( Type::Builtin( BuiltinType::Int ) ),
+      _ => Err( ParserError::SyntaxError( first.clone()
+                                        , "type"
+                                        , "a builtin type" ) )
+    };
+    self.next();
+
+    ret
   }
 
   fn expression( &mut self ) -> PResult<()> {
