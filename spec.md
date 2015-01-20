@@ -9,12 +9,12 @@ IDENT := (<is_alphanumeric> | "_")(<is_alphanumeric> | "_" | "'")*
 SYMBOL := SINGLE_SYMBOL | MULTI_SYMBOL+
 SINGLE_SYMBOL := "(" | ")" | "[" | "]"
 MULTI_SYMBOL := "!" | "#" | "%" | "&" | "/" | "=" | "?" | "`" | "´" | "@" | "$" | "{" | "}" | "|" | "~" | "^" | "*" | "<" | ">" | "," | "." | ":" | "-" | "\\"
+DIGIT := "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+NUMBER := ("+" | "-")? DIGIT+
 ```
 
 Not yet implemented:
 ```antlr
-DIGIT := "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
-NUMBER := ("+" | "-")? DIGIT+
 FLOAT := DIGIT "." DIGIT?
 ```
 
@@ -24,17 +24,20 @@ module := item*
 item := function_body
 function_body := IDENT+ "=" expression
 function_decl := IDENT ":" type
-type := "!"
+type := function_type | _type
+_type := builtin_type
+builtin_type := "int"
+function_type := _type "->" type
 expression := "!"
 ```
 
 Not yet implemented:
 ```antlr
-type := function_type | _type
-_type := IDENT | list_type | tuple_type
-function_type := _type "->" type
+type := function_type | _type | "(" type ")"
+_type := builtin_type | list_type | tuple_type
+function_type := type ("," type)* "->" type
 list_type := "[" type "]"
-tuple_type := "(" type (("," type)* | "," ) ")"
+tuple_type := "(" ( type ",")*  ")"
 ```
 
 # Required documentation:
