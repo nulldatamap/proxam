@@ -1,16 +1,22 @@
-use std::str::CharIndices;
+use std::str::{CharIndices, FromStr};
 
-use streamreader::StreamReader;
+use streamreader::{StreamReader, Checkpoint};
 
 use filemap::{CharLoc, CharOffset, Loc};
 
+#[derive(Show, PartialEq, Eq, Clone)]
+pub enum Literal {
+  Integer( i64 ),
+  Boolean( bool )
+}
 
 #[derive(Show, PartialEq, Eq, Clone)]
 pub enum TokenKind {
   Comment( String ),
   Ident( String ),
   Symbol( String ),
-  EOF,
+  Literal( Literal ),
+  EOF
 }
 
 #[derive(Show, PartialEq, Eq, Clone)]
@@ -78,9 +84,9 @@ pub struct Tokenizer<'a> {
   src          : &'a str,
   start_loc    : CharLoc,
   chars        : CharIndices<'a>,
-  current_chr : Option<char>,
+  current_chr  : Option<char>,
   current_loc  : Option<CharLoc>,
-  checkpoints  : Vec<CharIndices<'a>>
+  checkpoints  : Vec<(Option<char>, Option<CharLoc>, CharIndices<'a>)>
 }
 
 #[derive(Show, PartialEq, Eq)]
@@ -123,6 +129,13 @@ fn is_ident_chr( chr : char ) -> bool {
   }
 }
 
+fn is_digit_char( chr : char ) -> bool {
+  match chr {
+    '0'...'9' => true,
+    _ => false
+  }
+}
+
 static multi_symbol_chrs : [char; 24] = [ '!', '#', '%', '&', '/', '=', '?'
                                          , '`', '´', '@', '$', '{', '}', '|'
                                          , '~', '^', '*', '<', '>', ',', '.'
@@ -161,9 +174,11 @@ impl<'a> Tokenizer<'a> {
     self.skip_whitespace( true );
     // While there's still characters left
     while !self.reached_end() {
+      self.reset_checkpoints();
       // Try a fall-through parse of the different tokens
       let token = match fallthrough!( self : comment
                                            , ident
+                                           , integer
                                            , symbol ) {
         Some( tk ) => tk,
         None => {
@@ -274,6 +289,43 @@ impl<'a> Tokenizer<'a> {
     Ok( Some( token ) )
   }
 
+  fn integer( &mut self ) -> TResult<Option<Token>> {
+    self.push_checkpoint();
+    let mut chr = try!( self.try_current() );
+    let start_loc = self.current_loc.unwrap();
+    let mut intstr = String::new();
+    
+    match chr {
+      '+' | '-' => {
+        intstr.push( chr );
+        self.next();
+        chr = try!( self.try_current() );
+      },
+      _ => {}
+    }
+    
+    if !is_digit_char( chr ) {
+      self.pop_checkpoint();
+      return Ok( None )
+    }
+
+    self.next_while( |_chr| {
+      match _chr {
+        Some( v ) => if is_digit_char( v ) {
+          intstr.push( v );
+          true
+        } else {
+          false
+        },
+        None => false
+      }
+    } );
+
+    let ival = FromStr::from_str( &intstr[] ).expect( "Failed to read integer token" );
+    Ok( Some( Token::new( TokenKind::Literal( Literal::Integer( ival ) )
+                        , start_loc ) ) )
+  }
+
   fn skip_whitespace( &mut self, newline : bool ) -> Option<char> {
     self.next_while( |_chr| {
       let chr = _chr.unwrap();
@@ -330,5 +382,39 @@ impl<'a> StreamReader<Option<char>, char, TokenizerError> for Tokenizer<'a> {
   // Gets the current character, if none it returns an error
   fn try_current( &self ) -> TResult<char> {
     self.current_chr.ok_or( TokenizerError::UnexpectedEof )
+  }
+}
+
+impl<'a> Checkpoint for Tokenizer<'a> {
+  fn push_checkpoint( &mut self ) {
+    self.checkpoints.push( (self.current_chr
+                           , self.current_loc
+                           , self.chars.clone()) );
+  }
+
+  fn pop_checkpoint( &mut self ) {
+    match self.checkpoints.pop() {
+      Some( (c, l, v) ) => {
+        self.current_chr = c;
+        self.current_loc = l;
+        self.chars = v;
+      },
+      None => panic!( "Tried to pop a checkpoint from empty stack" )
+    }
+  }
+
+  fn peek_checkpoint( &mut self ) {
+    match self.checkpoints.last() {
+      Some( &(c, l, ref v) ) => {
+        self.current_chr = c;
+        self.current_loc = l;
+        self.chars = v.clone();
+      },
+      None => panic!( "Tried to peek a checkpoint from empty stack" )
+    }
+  }
+
+  fn reset_checkpoints( &mut self ) {
+    self.checkpoints.clear();
   }
 }

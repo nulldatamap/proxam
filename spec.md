@@ -10,7 +10,8 @@ SYMBOL := SINGLE_SYMBOL | MULTI_SYMBOL+
 SINGLE_SYMBOL := "(" | ")" | "[" | "]"
 MULTI_SYMBOL := "!" | "#" | "%" | "&" | "/" | "=" | "?" | "`" | "´" | "@" | "$" | "{" | "}" | "|" | "~" | "^" | "*" | "<" | ">" | "," | "." | ":" | "-" | "\\"
 DIGIT := "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
-NUMBER := ("+" | "-")? DIGIT+
+INTEGER := ("+" | "-")? DIGIT+
+BOOLEAN := "True" | "False"
 ```
 
 Not yet implemented:
