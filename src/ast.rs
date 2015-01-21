@@ -1,6 +1,8 @@
 use filemap::{CharLoc, Loc};
+use tokenizer;
 use tokenizer::{Token, TokenKind};
 
+type TLiteral = tokenizer::Literal;
 
 #[derive(Show, Clone)]
 pub enum BuiltinType {
@@ -90,6 +92,35 @@ impl ToModuleItem for FunctionDecl {
 
 #[derive(Show)]
 pub enum Expression {
+  Let( Vec<ModuleItem>, Box<Expression> ),
+  If( Box<Expression>, Box<Expression>, Box<Expression> ),
+  Literal( Literal ),
+  Named( Ident ),
+  Apply( Vec<Expression> )
+}
+
+#[derive(Show)]
+pub struct Literal {
+  pub lit : TLiteral,
+  pub loc : CharLoc
+}
+
+
+impl Literal {
+  pub fn from_token( tk : &Token ) -> Literal {
+    if !tk.is_literal() {
+      panic!( "Tried to create an literal from a non-literal token!" )
+    }
+
+    Literal{ lit: tk.get_literal(), loc: tk.loc() }
+  }
+
+}
+
+impl Loc for Literal {
+  fn loc( &self ) -> CharLoc {
+    self.loc
+  }
 }
 
 #[derive(Show)]

@@ -4,7 +4,7 @@ use streamreader::{StreamReader, Checkpoint};
 
 use filemap::{CharLoc, CharOffset, Loc};
 
-#[derive(Show, PartialEq, Eq, Clone)]
+#[derive(Show, PartialEq, Eq, Clone, Copy)]
 pub enum Literal {
   Integer( i64 ),
   Boolean( bool )
@@ -36,7 +36,14 @@ impl Token {
     match self.kind {
       TokenKind::Ident( ref s ) => s.clone(),
       TokenKind::Symbol( ref s ) => s.clone(),
-      _ => panic!( "The given symbol doesn't contain a st" )
+      _ => panic!( "Tried to get text from a non-text token: {:?}", self )
+    }
+  }
+
+  pub fn get_literal( &self ) -> Literal {
+    match self.kind {
+      TokenKind::Literal( lit ) => lit,
+      _ => panic!( "Tried to get Literal from a non-literal token: {:?}", self )
     }
   }
 
@@ -49,7 +56,14 @@ impl Token {
 
   pub fn is_symbol( &self, sym : &str ) -> bool {
     match self.kind {
-      TokenKind::Symbol( ref s ) if s.as_slice() == sym => true,
+      TokenKind::Symbol( ref s ) if &s[] == sym => true,
+      _ => false
+    }
+  }
+
+  pub fn is_keyword( &self, kwd : &str ) -> bool {
+    match self.kind {
+      TokenKind::Ident( ref s ) if &s[] == kwd => true,
       _ => false
     }
   }
@@ -57,6 +71,13 @@ impl Token {
   fn is_comment( &self ) -> bool {
     match self.kind {
       TokenKind::Comment( _ ) => true,
+      _ => false
+    }
+  }
+
+  pub fn is_literal( &self ) -> bool {
+    match self.kind {
+      TokenKind::Literal( _ ) => true,
       _ => false
     }
   }
@@ -194,7 +215,7 @@ impl<'a> Tokenizer<'a> {
     let eof_loc = self.start_loc.offset_by( CharOffset( self.src.len() as i32 ) );
     // Add the EOF token, which should always be the last
     tokens.push( Token::new( TokenKind::EOF, eof_loc ) );
-
+    
     Ok( tokens.into_iter()
               // Filter out all the comments, since we don't need them
               .filter_map( |v| if !v.is_comment() {

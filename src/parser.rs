@@ -5,7 +5,7 @@ use filemap::{CharLoc, CharOffset};
 use streamreader::{StreamReader, Checkpoint};
 use tokenizer::{Token, TokenKind};
 use ast::{ModuleItem, FunctionBody, Ident, Type, FunctionDecl
-         , ToModuleItem, BuiltinType};
+         , ToModuleItem, BuiltinType, Expression, Literal};
 
 pub struct Parser<'a> {
   items   : Iter<'a, Token>,
@@ -18,6 +18,17 @@ pub struct Parser<'a> {
 pub enum ParserError {
   ReachedEof,
   SyntaxError( Token, &'static str, &'static str )
+}
+
+impl ParserError {
+  fn overhaul_context( &self, whre : &'static str, wht : &'static str )
+     -> ParserError {
+    match self {
+      &ParserError::SyntaxError( tk, _, _ )
+        => ParserError::SyntaxError( tk, whre, wht ),
+      o => panic!( "Can't overhaul context of the variant: {:?}", o )
+    }
+  }
 }
 
 // For brevity
@@ -71,9 +82,7 @@ impl<'a> Parser<'a> {
     let name = if first.is_ident() {
       first
     } else {
-      return Err( ParserError::SyntaxError( first.clone()
-                , "function body"
-                , "an ident" ) )
+      return Err( self.syntax_error( "function body", "an ident" ) )
     };
 
     let mut args = Vec::new();
@@ -100,7 +109,6 @@ impl<'a> Parser<'a> {
     let body = try!( self.expression() );
 
     Ok( FunctionBody::new( Ident::from_token( name ), args ) )
-
   }
 
   fn function_decl( &mut self ) -> PResult<Option<FunctionDecl>> {
@@ -125,17 +133,15 @@ impl<'a> Parser<'a> {
     let decl = FunctionDecl::new( Ident::from_token( name ), ty );
     
     Ok( Some( decl ) )
-
   }
 
   fn any_type( &mut self ) -> PResult<Type> {
     if self.get_current().is_symbol( "(" ) {
       self.next();
-
+      
       let ty = try!( self.fn_type() );
       if !self.get_current().is_symbol( ")" ) {
-        return Err( ParserError::SyntaxError( self.get_current().clone()
-                                            , "type", "')'" ) )
+        return Err( self.syntax_error( "type", "')'" ) )
       }
       self.next();
       
@@ -161,9 +167,7 @@ impl<'a> Parser<'a> {
     }
 
     if !self.get_current().is_symbol( "->" ) {
-      return Err( ParserError::SyntaxError( self.get_current().clone()
-                                          , "function type"
-                                          , "'->'" ) )
+      return Err( self.syntax_error( "function type", "'->'" ) )
     }
 
     self.next();
@@ -182,29 +186,91 @@ impl<'a> Parser<'a> {
   fn builtin_type( &mut self ) -> PResult<Type> {
     let first = self.get_current();
     if !first.is_ident() {
-      return Err( ParserError::SyntaxError( first.clone()
-                                          , "type"
-                                          , "a builtin type" ) )
+      return Err( self.syntax_error( "type", "a builtin type" ) )
     }
     let ret = match &first.get_text()[] {
       "int" => Ok( Type::Builtin( BuiltinType::Int ) ),
-      _ => Err( ParserError::SyntaxError( first.clone()
-                                        , "type"
-                                        , "a builtin type" ) )
+      _ => Err( self.syntax_error( "type", "a builtin type" ) )
     };
     self.next();
 
     ret
   }
 
-  fn expression( &mut self ) -> PResult<()> {
-    let first = try!( self.try_current() );
-    if !first.is_symbol( "!" ) {
-      Err( ParserError::SyntaxError( first.clone(), "an expression", "'!'" ) )
-    } else {
+  fn expression( &mut self ) -> PResult<Expression> {
+    self.low_expr()
+  }
+
+  fn low_expr( &mut self ) -> PResult<Expression> {
+    Ok( if self.get_current().is_symbol( "(" ) {
       self.next();
-      Ok( () )
+      
+      let expr = try!( self.expression() );
+      if !self.get_current().is_symbol( ")" ) {
+        return Err( self.syntax_error( "expression", "')'" ) )
+      }
+      self.next();
+      
+      expr
+    } else {
+      if let Some( if_expr ) = try!( self.if_expr() ) {
+        if_expr
+
+      } else if let Some( let_expr ) = try!( self.let_expr() ) {
+        let_expr
+
+      } else if self.get_current().is_ident() {
+        Expression::Named( Ident::from_token( self.get_current() ) )
+
+      } else if self.get_current().is_literal() {
+        Expression::Literal( Literal::from_token( self.get_current() ) )
+
+      } else {
+        return Err( self.syntax_error( "expression", "a valid expression" ) )
+      }
+    } )
+  }
+
+  fn if_expr( &mut self ) -> PResult<Option<Expression>> {
+    if !self.get_current().is_keyword( "if" ) {
+      return Ok( None )
     }
+
+    self.next();
+
+    let cond = try!( self.expression()
+                         .map_err( |og|
+                            og.overhaul_context( "if condition"
+                                               , "valid condition" ) ) );
+
+    if !self.get_current().is_keyword( "then" ) {
+      return Err( self.syntax_error( "if expression", "'then'" ) )
+    }
+
+    let then = try!( self.expression()
+                         .map_err( |og|
+                            og.overhaul_context( "if then"
+                                               , "valid expression" ) ) );
+
+    if !self.get_current().is_keyword( "else" ) {
+      return Err( self.syntax_error( "if expression", "'else'" ) )
+    }
+
+    let els = try!( self.expression()
+                        .map_err( |og|
+                          og.overhaul_context( "if else"
+                                             , "valid expression" ) ) );
+    
+    let ret = Expression::If( Box::new( cond )
+                            , Box::new( then )
+                            , Box::new( els  ) );
+
+    Ok( Some( ret ) )
+  }
+
+  fn syntax_error( &mut self, whre : &'static str, wht : &'static str )
+     -> ParserError {
+    ParserError::SyntaxError( self.get_current().clone(), whre, wht )
   }
 
 }
