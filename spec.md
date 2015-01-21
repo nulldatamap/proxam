@@ -35,7 +35,7 @@ op_expr (x <- 1..n) := op_expr (x - 1) <op:SYMBOL x> op_expr (x - 1)
 op_expr 0 := low_expr <op 0> low_expr
 low_expr = "(" expression ")" | if_expr | let_expr | IDENT | literal
 if_expr = "if" expression "then" expression "else" expression
-let_expr = "let" item+ "in" expression
+let_expr = ("let" item)+ "in" expression
 literal = INTEGER
 ```
 
