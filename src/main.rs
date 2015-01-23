@@ -2,6 +2,7 @@
 extern crate version;
 extern crate rustc;
 
+use filemap::Loc;
 use tokenizer::Tokenizer;
 use parser::Parser;
 
@@ -17,9 +18,7 @@ mod codegen;
 fn main() {
   println!( "Proxam compiler v{}", version!() );
 
-  let test_src = "\
-magic : int -> int\n\
-magic x = !";
+  let test_src = include_str!( "testsrc.pxm" );
   let test_name = "<test>";
   let test_module_name = "helloworld";
 
@@ -45,6 +44,13 @@ magic x = !";
     Ok( ast ) => ast,
     Err( err ) => {
       println!( "Failed to parse: {:?}", err );
+      match err {
+        parser::ParserError::SyntaxError( tk, _, _ ) => {
+          let cld = filemap.get_charloc( tk.loc() ).unwrap();
+          println!("At {}:{}", cld.line, cld.pos );
+        },
+        _ => {}
+      }
       return
     }
   };

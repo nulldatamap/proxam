@@ -114,11 +114,11 @@ impl FromError<IoError> for FileMapError {
 
 #[derive(Show)]
 pub struct LocDescriptor<'a> {
-  path : Option<&'a Path>,
-  name : &'a str,
-  source : &'a str,
-  line : u32,
-  pos : u32
+  pub path : Option<&'a Path>,
+  pub name : &'a str,
+  pub source : &'a str,
+  pub line : u32,
+  pub pos : u32
 }
 
 pub struct Filemap {

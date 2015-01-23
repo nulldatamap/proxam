@@ -14,8 +14,10 @@ pub enum Literal {
 pub enum TokenKind {
   Comment( String ),
   Ident( String ),
+  TypeName( String ),
   Symbol( String ),
   Literal( Literal ),
+  Keyword( String ),
   EOF
 }
 
@@ -47,6 +49,16 @@ impl Token {
     }
   }
 
+  pub fn as_ident( &self ) -> Token {
+    match self.kind {
+      TokenKind::Symbol( ref s ) => Token::new( TokenKind::Ident( s.clone() )
+                                              , self.loc ),
+      TokenKind::TypeName( ref s ) => Token::new( TokenKind::Ident( s.clone() )
+                                                , self.loc ),
+      _ => panic!( "Tried to turn non-symbol token into an ident: {:?}", self )
+    }
+  }
+
   pub fn is_ident( &self ) -> bool {
     match self.kind {
       TokenKind::Ident( _ ) => true,
@@ -56,14 +68,21 @@ impl Token {
 
   pub fn is_symbol( &self, sym : &str ) -> bool {
     match self.kind {
-      TokenKind::Symbol( ref s ) if &s[] == sym => true,
+      TokenKind::Symbol( ref s ) => &s[] == sym,
       _ => false
     }
   }
 
   pub fn is_keyword( &self, kwd : &str ) -> bool {
     match self.kind {
-      TokenKind::Ident( ref s ) if &s[] == kwd => true,
+      TokenKind::Keyword( ref s ) => &s[] == kwd,
+      _ => false
+    }
+  }
+
+  pub fn is_type_name( &self ) -> bool {
+    match self.kind {
+      TokenKind::TypeName( _ ) => true,
       _ => false
     }
   }
@@ -157,10 +176,21 @@ fn is_digit_char( chr : char ) -> bool {
   }
 }
 
-static multi_symbol_chrs : [char; 24] = [ '!', '#', '%', '&', '/', '=', '?'
+fn is_keyword( s : &str ) -> bool {
+  match s {
+    "if" | "let" | "then" | "else" | "in" | "def" => true,
+    _ => false
+  }
+}
+
+fn is_type_name( s : &str ) -> bool {
+  s.char_at( 0 ).is_uppercase()
+}
+
+static multi_symbol_chrs : [char; 25] = [ '!', '#', '%', '&', '/', '=', '?'
                                          , '`', '´', '@', '$', '{', '}', '|'
                                          , '~', '^', '*', '<', '>', ',', '.'
-                                         , ':', '-', '\\' ];
+                                         , ':', '-', '+',  '\\' ];
 
 static single_symbol_chrs : [char; 4] = [ '(', ')', '[', ']' ];
 
@@ -271,9 +301,18 @@ impl<'a> Tokenizer<'a> {
         false
       }
     } );
+
+    let tkk = if is_keyword( &ident_buffer[] ) {
+      TokenKind::Keyword( ident_buffer )
+
+    } else if is_type_name( &ident_buffer[] ) {
+      TokenKind::TypeName( ident_buffer )
+
+    }else {
+      TokenKind::Ident( ident_buffer )
+    };
     
-    let token = Token::new( TokenKind::Ident( ident_buffer )
-                          , start_loc );
+    let token = Token::new( tkk, start_loc );
     Ok( Some( token ) )
   }
 
@@ -342,7 +381,8 @@ impl<'a> Tokenizer<'a> {
       }
     } );
 
-    let ival = FromStr::from_str( &intstr[] ).expect( "Failed to read integer token" );
+    let ival = FromStr::from_str( &intstr[] )
+                       .expect( "Failed to read integer token" );
     Ok( Some( Token::new( TokenKind::Literal( Literal::Integer( ival ) )
                         , start_loc ) ) )
   }

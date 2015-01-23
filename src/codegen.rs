@@ -2,8 +2,8 @@ use std::ffi::CString;
 
 use rustc::llvm;
 
-use ast::{ModuleItem, FunctionBody, Type, BuiltinType};
-use hicr::{Module, Function};
+use ast::{Function, Type, BuiltinType};
+use hicr::{Module};
 
 type ContextRef = *mut llvm::Context_opaque;
 type ValueRef = *mut llvm::Value_opaque;
@@ -42,7 +42,7 @@ fn generate_fn( ctx : ContextRef, fname : &str
     let f = llvm::LLVMGetOrInsertFunction( module, cname.as_ptr(), ftype );
     
     for (arg, i) in func.arg_names.iter().zip( range( 0, func.arg_names.len() ) ) {
-      let carg = CString::from_slice( arg.as_bytes() );
+      let carg = CString::from_slice( arg.text.as_bytes() );
       llvm::LLVMSetValueName( llvm::LLVMGetParam( f, i as u32 ), carg.as_ptr() );
     }
 
@@ -75,10 +75,12 @@ fn get_fn_type( ctx : ContextRef, args : Vec<Type>, ret : Type ) -> TypeRef {
 
 fn get_type( ctx : ContextRef, ty : Type ) -> TypeRef {
   match ty {
-    Type::Builtin( bit ) => get_builtin_type( ctx, bit ),
+    Type::BuiltinType( bit ) => get_builtin_type( ctx, bit ),
     Type::Tuple( el ) => get_tuple_type( ctx, el ),
     Type::Unit => unit_type( ctx ),
-    Type::Fn( args, ret ) => get_fn_type( ctx, args, *ret )
+    Type::Fn( args, ret ) => get_fn_type( ctx, args, *ret ),
+    Type::NamedType( n ) => panic!( "Reached unresolved type in codegen: {:?}"
+                                  , n )
   }
 }
 

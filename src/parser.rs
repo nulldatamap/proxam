@@ -4,8 +4,7 @@ use std::slice::Iter;
 use filemap::{CharLoc, CharOffset};
 use streamreader::{StreamReader, Checkpoint};
 use tokenizer::{Token, TokenKind};
-use ast::{ModuleItem, FunctionBody, Ident, Type, FunctionDecl
-         , ToModuleItem, BuiltinType, Expression, Literal};
+use ast::{Function, Ident, Type, BuiltinType, Expression, Literal};
 
 pub struct Parser<'a> {
   items   : Iter<'a, Token>,
@@ -24,12 +23,22 @@ impl ParserError {
   fn overhaul_context( &self, whre : &'static str, wht : &'static str )
      -> ParserError {
     match self {
-      &ParserError::SyntaxError( tk, _, _ )
-        => ParserError::SyntaxError( tk, whre, wht ),
+      &ParserError::SyntaxError( ref tk, _, _ )
+        => ParserError::SyntaxError( tk.clone(), whre, wht ),
       o => panic!( "Can't overhaul context of the variant: {:?}", o )
     }
   }
 }
+
+const operator_count : usize = 14;
+static operators : [(&'static str, u32); operator_count] =
+       [ ("<|", 0), ("|>", 0) // Lowest precedence
+       , ("=", 1)
+       , ("==", 2), ("/=", 2)
+       , ("<", 3), (">", 3), (">=", 3), ("<=", 3)
+       , ("+", 4), ("-", 4)
+       , ("*", 5), ("/", 5)
+       , (".", 6) ]; // Highest precedence
 
 // For brevity
 type PResult<T> = Result<T, ParserError>;
@@ -37,118 +46,87 @@ type PResult<T> = Result<T, ParserError>;
 impl<'a> Parser<'a> {
   fn new( name : &'a str, src : &'a str, tokens : &'a[Token] )
      -> Parser<'a> {
-    Parser  { tokens: tokens
-            , items: tokens.iter()
-                       // Garbage initial token
-            , current: None
-            , checkpoints: Vec::new() }
+    Parser { tokens: tokens
+           , items: tokens.iter()
+                      // Garbage initial token
+           , current: None
+           , checkpoints: Vec::new() }
   }
 
   pub fn parse( name : &'a str, src : &'a str, tokens : &'a[Token] )
-     -> PResult<Vec<ModuleItem>> {
+     -> PResult<Vec<Function>> {
     let mut parser = Parser::new( name, src, tokens );
     parser.start()
   }
 
-  fn start( &mut self ) -> PResult<Vec<ModuleItem>> {
+  fn start( &mut self ) -> PResult<Vec<Function>> {
     // Load up the fist token from the stream
     self.next();
 
-    let mut mod_items = Vec::new();
+    let mut fns = Vec::new();
 
     while !self.reached_end() {
       self.reset_checkpoints();
-      mod_items.push( try!( self.module_item() ) );
+      fns.push( try!( self.def() ) );
     }
     
-    Ok( mod_items )
+    Ok( fns )
   }
 
-  fn module_item( &mut self ) -> PResult<ModuleItem> {
-    self.push_checkpoint();
-    
-    self.function() // Or a typedef at some point
-  }
+  fn def( &mut self ) -> PResult<Function> {
 
-  fn function( &mut self ) -> PResult<ModuleItem> {
-    Ok( match try!( self.function_decl() ) {
-      Some( v ) => v.to_module_item(),
-      _ => try!( self.function_body() ).to_module_item()
-    } )
-  }
-
-  fn function_body( &mut self ) -> PResult<FunctionBody> {
-    let first = try!( self.try_current() );
-    let name = if first.is_ident() {
-      first
-    } else {
-      return Err( self.syntax_error( "function body", "an ident" ) )
-    };
-
-    let mut args = Vec::new();
-
-    let mut tk;
-    loop { 
-      self.next();
-
-      tk = try!( self.try_current() );
-
-      if tk.is_ident() {
-        args.push( Ident::from_token( tk ) );
-      } else {
-        break
-      }
-    }
-
-    if !tk.is_symbol( "=" ) {
-      return Err( ParserError::SyntaxError( tk.clone(), "function body", "'='" ) )
+    if !self.get_current().is_keyword( "def" ) {
+      return Err( self.syntax_error( "function", "'def'" ) )
     }
 
     self.next();
 
-    let body = try!( self.expression() );
-
-    Ok( FunctionBody::new( Ident::from_token( name ), args ) )
+    self.function()
   }
 
-  fn function_decl( &mut self ) -> PResult<Option<FunctionDecl>> {
-    let first = try!( self.try_current() );
-    let name = if first.is_ident() {
-      first
+  fn function( &mut self ) -> PResult<Function> {
+
+    let fn_name = if self.get_current().is_ident() {
+      Ident::from_token( self.get_current() )
     } else {
-      return Ok( None )
+      return Err( self.syntax_error( "function", "function name" ) )
     };
 
-    let tk = self.next();
+    self.next();
 
-    if !tk.is_symbol( ":" ) {
-      self.peek_checkpoint();
-      return Ok( None )
+    // Parse the arguments
+    let mut arg_names = Vec::new();
+
+    while self.get_current().is_ident() {
+      let arg_name = Ident::from_token( self.get_current() );
+      
+      arg_names.push( arg_name );
+      
+      self.next();
+    }
+
+    // Parse the return type
+    if !self.get_current().is_symbol( ":" ) {
+      return Err( self.syntax_error( "function header", ":" ) )
     }
 
     self.next();
 
     let ty = try!( self.any_type() );
 
-    let decl = FunctionDecl::new( Ident::from_token( name ), ty );
-    
-    Ok( Some( decl ) )
+    // Parse the body
+    let body = if self.get_current().is_symbol( "=" ) {
+      self.next();
+
+      Some( try!( self.expression() ) )
+    } else {
+      None
+    };
+    Ok( Function::new( fn_name, arg_names, ty, body ) )
   }
 
   fn any_type( &mut self ) -> PResult<Type> {
-    if self.get_current().is_symbol( "(" ) {
-      self.next();
-      
-      let ty = try!( self.fn_type() );
-      if !self.get_current().is_symbol( ")" ) {
-        return Err( self.syntax_error( "type", "')'" ) )
-      }
-      self.next();
-      
-      Ok( ty )
-    } else {
-      self.fn_type()
-    }
+    self.fn_type()
   }
 
   fn fn_type( &mut self ) -> PResult<Type> {
@@ -180,37 +158,102 @@ impl<'a> Parser<'a> {
   }
 
   fn _type( &mut self ) -> PResult<Type> {
-    self.builtin_type()
+    if self.get_current().is_symbol( "(" ) {
+      self.next();
+      
+      let ty = try!( self.any_type() );
+      if !self.get_current().is_symbol( ")" ) {
+        return Err( self.syntax_error( "type", "')'" ) )
+      }
+      self.next();
+      
+      Ok( ty )
+    } else {
+      self.named_type()
+    }
   }
 
-  fn builtin_type( &mut self ) -> PResult<Type> {
+  fn named_type( &mut self ) -> PResult<Type> {
     let first = self.get_current();
-    if !first.is_ident() {
+
+    if !first.is_type_name() {
       return Err( self.syntax_error( "type", "a builtin type" ) )
     }
-    let ret = match &first.get_text()[] {
-      "int" => Ok( Type::Builtin( BuiltinType::Int ) ),
-      _ => Err( self.syntax_error( "type", "a builtin type" ) )
-    };
+
     self.next();
 
-    ret
+    Ok( Type::NamedType( Ident::from_token( &first.as_ident() ) ) )
   }
 
   fn expression( &mut self ) -> PResult<Expression> {
-    self.low_expr()
+    let first = try!( self.op_expr( 0 ) );
+
+    let mut rest = vec![ first ];
+    loop {
+      self.push_checkpoint();
+
+      match self.op_expr( 0 ) {
+        Ok( o ) => rest.push( o ),
+        Err( _ ) => {
+          self.pop_checkpoint();
+          break;
+        }
+      }
+    }
+
+    if rest.len() == 1 {
+      Ok( rest.pop().unwrap() )
+    } else {
+      Ok( Expression::Apply( rest ) )
+    }
+  }
+
+  fn op_expr( &mut self, op_precedence : u32 ) -> PResult<Expression> {
+    // Get all the operators that match the current precedence level.
+    let mut ops = operators.iter()
+                           .filter( |&&(_, prec)| prec == op_precedence );
+    
+    let lhs = try!( self.lower_op_expr( op_precedence ) );
+    
+    for &(op, _) in ops {
+      if self.get_current().is_symbol( op ) {
+        let op_tk = Expression::Named(
+                      Ident::from_token( &self.get_current()
+                                              .as_ident() ) );
+        
+        self.next();
+
+        let rhs = try!( self.lower_op_expr( op_precedence ) );
+        // lhs <op> rhs becomes <op> lhs rhs 
+        let expr = Expression::Apply( vec![ op_tk, lhs, rhs ] );
+        return Ok( expr )
+      }
+    }
+
+    // In case we don't match an operator just return the fallthrough value
+    Ok( lhs )
+  }
+
+  fn lower_op_expr( &mut self, op_precedence : u32 ) -> PResult<Expression> {
+    if op_precedence == operator_count as u32 - 1 {
+      self.low_expr()
+    } else {
+      self.op_expr( op_precedence + 1 )
+    }
   }
 
   fn low_expr( &mut self ) -> PResult<Expression> {
     Ok( if self.get_current().is_symbol( "(" ) {
+
       self.next();
       
       let expr = try!( self.expression() );
       if !self.get_current().is_symbol( ")" ) {
         return Err( self.syntax_error( "expression", "')'" ) )
       }
+
       self.next();
-      
+
       expr
     } else {
       if let Some( if_expr ) = try!( self.if_expr() ) {
@@ -220,10 +263,14 @@ impl<'a> Parser<'a> {
         let_expr
 
       } else if self.get_current().is_ident() {
-        Expression::Named( Ident::from_token( self.get_current() ) )
+        let r = Expression::Named( Ident::from_token( self.get_current() ) );
+        self.next();
+        r
 
       } else if self.get_current().is_literal() {
-        Expression::Literal( Literal::from_token( self.get_current() ) )
+        let r = Expression::Literal( Literal::from_token( self.get_current() ) );
+        self.next();
+        r
 
       } else {
         return Err( self.syntax_error( "expression", "a valid expression" ) )
@@ -247,6 +294,8 @@ impl<'a> Parser<'a> {
       return Err( self.syntax_error( "if expression", "'then'" ) )
     }
 
+    self.next();
+
     let then = try!( self.expression()
                          .map_err( |og|
                             og.overhaul_context( "if then"
@@ -255,6 +304,8 @@ impl<'a> Parser<'a> {
     if !self.get_current().is_keyword( "else" ) {
       return Err( self.syntax_error( "if expression", "'else'" ) )
     }
+
+    self.next();
 
     let els = try!( self.expression()
                         .map_err( |og|
@@ -266,6 +317,34 @@ impl<'a> Parser<'a> {
                             , Box::new( els  ) );
 
     Ok( Some( ret ) )
+  }
+
+  fn let_expr( &mut self ) -> PResult<Option<Expression>> {
+    if !self.get_current().is_keyword( "let" ) {
+      return Ok( None )
+    }
+
+    self.next();
+
+    let mut let_items = Vec::new();
+
+    loop {
+      let_items.push( try!( self.function() ) );
+      if !self.get_current().is_symbol( "," ) {
+        break
+      }
+      print!(", ");
+      self.next();
+    }
+
+    if !self.get_current().is_keyword( "in" ) {
+      return Err( self.syntax_error( "let expression", "'in'" ) );
+    }
+    self.next();
+
+    let expr = try!( self.expression() );
+
+    Ok( Some( Expression::Let( let_items, Box::new( expr ) ) ) )
   }
 
   fn syntax_error( &mut self, whre : &'static str, wht : &'static str )

@@ -5,8 +5,10 @@
 
 ```antlr
 COMMENT := ";" (-"\n")* "\n"
-IDENT := (<is_alphanumeric> | "_")(<is_alphanumeric> | "_" | "'")*
+IDENT := (<is_alphanumeric_lower> | "_")(<is_alphanumeric> | "_" | "'")*
+TYPE_NAME := (<is_alphanumeric_upper> | "_")(<is_alphanumeric> | "_" | "'")*
 SYMBOL := SINGLE_SYMBOL | MULTI_SYMBOL+
+KEYWORD = "if" | "then" | "else" | "let" | "in" | "def"
 SINGLE_SYMBOL := "(" | ")" | "[" | "]"
 MULTI_SYMBOL := "!" | "#" | "%" | "&" | "/" | "=" | "?" | "`" | "´" | "@" | "$" | "{" | "}" | "|" | "~" | "^" | "*" | "<" | ">" | "," | "." | ":" | "-" | "\\"
 DIGIT := "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
@@ -21,12 +23,11 @@ FLOAT := DIGIT "." DIGIT?
 
 ## Syntax:
 ```antlr
-module := item*
-item := function_body
-function_body := IDENT+ "=" expression
-function_decl := IDENT ":" type
+module := function*
+def := "def" function
+function := ident (ident)* ":" type ("=" expression)?
 type := function_type | _type
-_type := builtin_type
+_type := builtin_type | TYPE_NAME
 builtin_type := "int"
 function_type := _type "->" type
 expression := appl_expr
@@ -35,7 +36,7 @@ op_expr (x <- 1..n) := op_expr (x - 1) <op:SYMBOL x> op_expr (x - 1)
 op_expr 0 := low_expr <op 0> low_expr
 low_expr = "(" expression ")" | if_expr | let_expr | IDENT | literal
 if_expr = "if" expression "then" expression "else" expression
-let_expr = ("let" item)+ "in" expression
+let_expr = "let" function ("," function)* "in" expression
 literal = INTEGER
 ```
 

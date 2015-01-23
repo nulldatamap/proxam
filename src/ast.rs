@@ -4,14 +4,15 @@ use tokenizer::{Token, TokenKind};
 
 type TLiteral = tokenizer::Literal;
 
-#[derive(Show, Clone)]
+#[derive(Show, Clone, PartialEq)]
 pub enum BuiltinType {
   Int
 }
 
-#[derive(Show, Clone)]
+#[derive(Show, Clone, PartialEq)]
 pub enum Type {
-  Builtin( BuiltinType ),
+  NamedType( Ident ),
+  BuiltinType( BuiltinType ),
   Unit,
   Tuple( Vec<Type> ),
   Fn( Vec<Type>, Box<Type> )
@@ -35,64 +36,33 @@ impl Type {
 }
 
 #[derive(Show)]
-pub enum ModuleItem {
-  FunctionBody( FunctionBody ),
-  FunctionDecl( FunctionDecl )
-}
-
-
-#[derive(Show)]
-pub struct FunctionDecl {
+pub struct Function {
   pub name : Ident,
-  pub ty   : Type
+  pub ty   : Type,
+  pub arg_names : Vec<Ident>,
+  pub body : Option<Expression>,
 }
 
-impl FunctionDecl {
-  pub fn new( name : Ident, ty : Type ) -> FunctionDecl {
-    FunctionDecl { name : name
-                 , ty   : ty }
+impl Function {
+  pub fn new( name : Ident, arg_names : Vec<Ident>, ty : Type
+            , body : Option<Expression> ) -> Function {
+    
+    Function { name: name
+             , ty : ty
+             , arg_names: arg_names
+             , body: body }
   }
 }
 
-#[derive(Show)]
-pub struct FunctionBody {
-  pub name : Ident,
-  pub args : Vec<Ident>,
-  // We also need an actual body
-}
-
-impl FunctionBody {
-  pub fn new( name : Ident, args : Vec<Ident> ) -> FunctionBody {
-    FunctionBody { name: name
-                 , args: args }
-  }
-}
-
-impl Loc for FunctionBody {
+impl Loc for Function {
   fn loc( &self ) -> CharLoc {
     self.name.loc()
   }
 }
 
-pub trait ToModuleItem {
-  fn to_module_item( self ) -> ModuleItem;
-}
-
-impl ToModuleItem for FunctionBody {
-  fn to_module_item( self ) -> ModuleItem {
-    ModuleItem::FunctionBody( self )
-  }
-}
-
-impl ToModuleItem for FunctionDecl {
-  fn to_module_item( self ) -> ModuleItem {
-    ModuleItem::FunctionDecl( self )
-  }
-}
-
 #[derive(Show)]
 pub enum Expression {
-  Let( Vec<ModuleItem>, Box<Expression> ),
+  Let( Vec<Function>, Box<Expression> ),
   If( Box<Expression>, Box<Expression>, Box<Expression> ),
   Literal( Literal ),
   Named( Ident ),
@@ -104,7 +74,6 @@ pub struct Literal {
   pub lit : TLiteral,
   pub loc : CharLoc
 }
-
 
 impl Literal {
   pub fn from_token( tk : &Token ) -> Literal {
@@ -123,7 +92,7 @@ impl Loc for Literal {
   }
 }
 
-#[derive(Show)]
+#[derive(Show, Clone)]
 pub struct Ident {
   pub text : String,
   pub loc  : CharLoc
@@ -145,3 +114,8 @@ impl Loc for Ident {
   }
 }
 
+impl PartialEq<Ident> for Ident {
+  fn eq( &self, other : &Ident ) -> bool {
+    self.text == other.text
+  }
+}

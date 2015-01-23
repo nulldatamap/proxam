@@ -1,0 +1,9 @@
+
+def magic x y : Int -> Int =
+  let a : Int = (1 == 1) + 5 * 2,
+      b : Int = 1 == 1 + 5 * 2
+  in a b
+
+def wøwser : Int = 3
+
+def super_wowser : Int = 10
