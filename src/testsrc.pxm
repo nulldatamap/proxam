@@ -1,8 +1,8 @@
 
-def magic x y : Int -> Int =
+def magic x y : (Int -> Int), Int -> Int =
   let a : Int = (1 == 1) + 5 * 2,
       b : Int = 1 == 1 + 5 * 2
-  in a b
+  in x y
 
 def wøwser : Int = 3
 

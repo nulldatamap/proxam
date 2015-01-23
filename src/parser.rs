@@ -133,6 +133,7 @@ impl<'a> Parser<'a> {
     let start_ty = try!( self._type() );
     
     let start = self.get_current();
+
     if !( start.is_symbol( "->" ) || start.is_symbol( "," ) ) {
       return Ok( start_ty )
     }
@@ -141,7 +142,7 @@ impl<'a> Parser<'a> {
 
     while self.get_current().is_symbol( "," ) {
       self.next();
-      args.push( try!( self.any_type() ) );
+      args.push( try!( self._type() ) );
     }
 
     if !self.get_current().is_symbol( "->" ) {

@@ -26,10 +26,9 @@ FLOAT := DIGIT "." DIGIT?
 module := function*
 def := "def" function
 function := ident (ident)* ":" type ("=" expression)?
-type := function_type | _type
-_type := builtin_type | TYPE_NAME
-builtin_type := "int"
-function_type := _type "->" type
+type := function_type
+function_type := _type ("," _type)* "->" type
+_type := "(" type ")" | TYPE_NAME
 expression := appl_expr
 appl_expr := op_expr n (op_expr n)*
 op_expr (x <- 1..n) := op_expr (x - 1) <op:SYMBOL x> op_expr (x - 1)
