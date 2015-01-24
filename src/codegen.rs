@@ -79,7 +79,7 @@ fn get_type( ctx : ContextRef, ty : Type ) -> TypeRef {
     Type::Tuple( el ) => get_tuple_type( ctx, el ),
     Type::Unit => unit_type( ctx ),
     Type::Fn( args, ret ) => get_fn_type( ctx, args, *ret ),
-    Type::NamedType( n ) => panic!( "Reached unresolved type in codegen: {:?}"
+    /*Type::NamedType( n )*/n => panic!( "Reached unresolved type in codegen: {:?}"
                                   , n )
   }
 }

@@ -1,9 +1,9 @@
 
-def magic x y : (Int -> Int), Int -> Int =
+def magic x y : (Int -> [Int]), Int -> Int =
   let a : Int = (1 == 1) + 5 * 2,
       b : Int = 1 == 1 + 5 * 2
   in x y
 
-def wøwser : Int = 3
+def wøwser x : () -> (Int,) = 3
 
-def super_wowser : Int = 10
+def super_wowser : (Int, Int) = 10

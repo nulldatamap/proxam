@@ -23,16 +23,18 @@ FLOAT := DIGIT "." DIGIT?
 
 ## Syntax:
 ```antlr
-module := function*
+module := def*
 def := "def" function
 function := ident (ident)* ":" type ("=" expression)?
 type := function_type
 function_type := _type ("," _type)* "->" type
-_type := "(" type ")" | TYPE_NAME
+_type := tuple_type | list_type | TYPE_NAME
+tuple_type = "(" ")" | "(" type ")" | "(" (type ",")+ ")"
+list_type = "[" type "]"
 expression := appl_expr
 appl_expr := op_expr n (op_expr n)*
-op_expr (x <- 1..n) := op_expr (x - 1) <op:SYMBOL x> op_expr (x - 1)
-op_expr 0 := low_expr <op 0> low_expr
+op_expr (x <- 0..(n - 1)) := op_expr (x + 1) <op:SYMBOL x> op_expr (x + 1)
+op_expr n := low_expr <op 0> low_expr
 low_expr = "(" expression ")" | if_expr | let_expr | IDENT | literal
 if_expr = "if" expression "then" expression "else" expression
 let_expr = "let" function ("," function)* "in" expression
@@ -40,16 +42,7 @@ literal = INTEGER
 ```
 
 `op_expr x` referring to the infix operator(s) with a precedence of `x`.
-`op_expr (x <- 1..n) := op_expr (x - 1) <op x> op_expr (x - 1)` meaning that the definition of operator number `x` is a pair of a decrement lower operators ( or `low_expr` in the case of `op_expr 1` ) surrounding the symbol for the given operator.
-
-Not yet implemented:
-```antlr
-type := function_type | _type | "(" type ")"
-_type := builtin_type | list_type | tuple_type
-function_type := type ("," type)* "->" type
-list_type := "[" type "]"
-tuple_type := "(" ( type ",")*  ")"
-```
+`op_expr (x <- 1..n) := op_expr (x - 1) <op x> op_expr (x - 1)` meaning that the definition of operator number `x` is a pair of a decrement lower operators ( or `low_expr` in the case of `op_expr n`, the highest precedence operator(s) ) surrounding the symbol for the given operator(s).
 
 # Required documentation:
 * [ ] Design goals

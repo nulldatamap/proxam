@@ -138,11 +138,35 @@ impl<'a> Parser<'a> {
       return Ok( start_ty )
     }
 
+    self.push_checkpoint();
+
+    if self.get_current().is_symbol( "," ) {
+      self.push_checkpoint();
+
+      self.next();
+
+      if self.get_current().is_symbol( ")" ) {
+
+        self.pop_checkpoint();
+        self.pop_checkpoint();
+
+        return Ok( start_ty )
+      }
+      self.pop_checkpoint();
+    }
+
     let mut args = vec![ start_ty ];
 
     while self.get_current().is_symbol( "," ) {
       self.next();
       args.push( try!( self._type() ) );
+      // In case this is actually is a tuple and not a function
+      // This is not very efficient, but it works
+      if self.get_current().is_symbol( ")" ) {
+        self.pop_checkpoint();
+
+        return Ok( args.remove( 0 ) )
+      }
     }
 
     if !self.get_current().is_symbol( "->" ) {
@@ -159,26 +183,94 @@ impl<'a> Parser<'a> {
   }
 
   fn _type( &mut self ) -> PResult<Type> {
-    if self.get_current().is_symbol( "(" ) {
-      self.next();
-      
-      let ty = try!( self.any_type() );
-      if !self.get_current().is_symbol( ")" ) {
-        return Err( self.syntax_error( "type", "')'" ) )
-      }
-      self.next();
-      
-      Ok( ty )
+    if let Some( tup_ty ) = try!( self.tuple_type() ) {
+      Ok( tup_ty )
+
+    } else if let Some( list_ty ) = try!( self.list_type() ) {
+        Ok( list_ty )
+
     } else {
       self.named_type()
     }
+  }
+
+  fn tuple_type( &mut self ) -> PResult<Option<Type>> {
+    if !self.get_current().is_symbol( "(" ) {
+      return Ok( None )
+    }
+
+    self.next();
+
+    if self.get_current().is_symbol( ")" ) {
+      self.next();
+
+      return Ok( Some( Type::Unit ) )
+    }
+
+    let first_ty = try!( self.any_type() );
+    
+    if !self.get_current().is_symbol( "," ) {
+      if !self.get_current().is_symbol( ")" ) {
+        return Err( self.syntax_error( "type", "')'" ) )
+      }
+
+      self.next();
+
+      return Ok( Some( first_ty ) )
+    }
+
+    self.next();
+
+    let mut types = vec![ first_ty ];
+    if self.get_current().is_symbol( ")" ) {
+      self.next();
+
+      return Ok( Some( Type::Tuple( types ) ) )
+    }
+
+    loop {
+      types.push( try!( self.any_type() ) );
+
+      if !self.get_current().is_symbol( "," ) {
+        break;
+      }
+
+      self.next();
+    }
+
+    if !self.get_current().is_symbol( ")" ) {
+      return Err( self.syntax_error( "type", "')'" ) )
+    }
+
+    self.next();
+      
+    Ok( Some( Type::Tuple( types ) ) )
+  }
+
+  fn list_type( &mut self ) -> PResult<Option<Type>> {
+    if !self.get_current().is_symbol( "[" ) {
+      return Ok( None )
+    }
+
+    self.next();
+
+    let inner = try!( self.any_type() );
+
+    if !self.get_current().is_symbol( "]" ) {
+      return Err( self.syntax_error( "list type", "']'" ) )
+    }
+
+    self.next();
+
+    Ok( Some( Type::List( Box::new( inner ) ) ) )
+    
   }
 
   fn named_type( &mut self ) -> PResult<Type> {
     let first = self.get_current();
 
     if !first.is_type_name() {
-      return Err( self.syntax_error( "type", "a builtin type" ) )
+      return Err( self.syntax_error( "type", "a type name" ) )
     }
 
     self.next();
@@ -334,7 +426,6 @@ impl<'a> Parser<'a> {
       if !self.get_current().is_symbol( "," ) {
         break
       }
-      print!(", ");
       self.next();
     }
 

@@ -15,6 +15,7 @@ pub enum Type {
   BuiltinType( BuiltinType ),
   Unit,
   Tuple( Vec<Type> ),
+  List( Box<Type> ),
   Fn( Vec<Type>, Box<Type> )
 }
 
