@@ -1,3 +1,5 @@
+#![feature(unsafe_destructor)]
+
 #[macro_use]
 extern crate version;
 extern crate rustc;
@@ -15,24 +17,28 @@ mod ast;
 mod hicr;
 mod codegen;
 
+#[cfg(test)]
+mod test;
+
 fn main() {
   println!( "Proxam compiler v{}", version!() );
 
-  let test_src = include_str!( "testsrc.pxm" );
   let test_name = "<test>";
   let test_module_name = "helloworld";
 
   let mut filemap = filemap::Filemap::new();
-  let fstart = match filemap.add_from_string( test_name.to_string()
-                                            , test_src.to_string() ) {
-    Ok( s ) => s,
-    Err( err ) => {
-      println!( "Failed to add to the file map: {:?}", err );
-      return
-    }
+  let fstart = match filemap.add_from_file( test_name.to_string()
+                                          , Path::new( "src/testsrc.pxm" ) ) {
+      Ok( s ) => s,
+      Err( err ) => {
+        println!( "Failed to add to the file map: {:?}", err );
+        return
+      }
   };
 
-  let tks = match Tokenizer::tokenize( test_src, fstart ) {
+  let fdes = filemap.get_charloc( fstart ).unwrap();
+
+  let tks = match Tokenizer::tokenize( fdes.source, fstart ) {
     Ok( tks ) => tks,
     Err( err ) => {
       println!( "Failed to tokenize: {:?}", err );
@@ -40,7 +46,7 @@ fn main() {
     }
   };
 
-  let ast = match Parser::parse( test_name, test_src, tks.as_slice() ) {
+  let ast = match Parser::parse( test_name, fdes.source, tks.as_slice() ) {
     Ok( ast ) => ast,
     Err( err ) => {
       println!( "Failed to parse: {:?}", err );
@@ -55,9 +61,10 @@ fn main() {
     }
   };
 
-  println!( "=> {:?}", ast );
+  //println!( "=> {:?}", ast );
 
-  let module = match hicr::validate_module( ast ) {
+  let module = match hicr::validate_module( test_module_name.to_string()
+                                          , ast ) {
     Ok( md ) => md,
     Err( err ) => {
       println!("Failed to validate module: {:?}", err );

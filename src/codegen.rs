@@ -26,7 +26,7 @@ pub fn generate_module( name : &str, module : Module ) -> ModuleRef {
     llmodule = llvm::LLVMModuleCreateWithNameInContext( c_name.as_ptr(), ctx );
     
     for (fname, func) in module.functions.into_iter() {
-      generate_fn( ctx, &fname[], func, llmodule );
+      generate_fn( ctx, &fname.to_string()[], func, llmodule );
     }
 
   }

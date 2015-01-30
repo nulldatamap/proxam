@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::error::FromError;
-use std::io::IoError;
-use std::io::fs::File;
+use std::old_io::IoError;
+use std::old_io::fs::File;
 
-#[derive(Show, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
 pub struct CharLoc( pub u32 );
 
 impl CharLoc {
@@ -31,7 +31,7 @@ impl CharLoc {
   }
 }
 
-#[derive(Show, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct CharOffset( pub i32 );
 
 impl CharOffset {
@@ -100,7 +100,7 @@ impl FilemapEntry {
   }
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum FileMapError {
   LocitionOutOfBounds,
   IoError( IoError )
@@ -112,7 +112,7 @@ impl FromError<IoError> for FileMapError {
   }
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct LocDescriptor<'a> {
   pub path : Option<&'a Path>,
   pub name : &'a str,

@@ -13,7 +13,7 @@ pub struct Parser<'a> {
   checkpoints : Vec<(&'a Token, Iter<'a, Token>)>
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum ParserError {
   ReachedEof,
   SyntaxError( Token, &'static str, &'static str )
@@ -306,11 +306,11 @@ impl<'a> Parser<'a> {
     let mut ops = operators.iter()
                            .filter( |&&(_, prec)| prec == op_precedence );
     
-    let lhs = try!( self.lower_op_expr( op_precedence ) );
+    let mut lhs = try!( self.lower_op_expr( op_precedence ) );
     
     for &(op, _) in ops {
-      if self.get_current().is_symbol( op ) {
-        let op_tk = Expression::Named(
+      while self.get_current().is_symbol( op ) {
+        let op_tk = Expression::UnresolvedNamed(
                       Ident::from_token( &self.get_current()
                                               .as_ident() ) );
         
@@ -318,8 +318,7 @@ impl<'a> Parser<'a> {
 
         let rhs = try!( self.lower_op_expr( op_precedence ) );
         // lhs <op> rhs becomes <op> lhs rhs 
-        let expr = Expression::Apply( vec![ op_tk, lhs, rhs ] );
-        return Ok( expr )
+        lhs = Expression::Apply( vec![ op_tk, lhs, rhs ] );
       }
     }
 
@@ -356,7 +355,8 @@ impl<'a> Parser<'a> {
         let_expr
 
       } else if self.get_current().is_ident() {
-        let r = Expression::Named( Ident::from_token( self.get_current() ) );
+        let r = Expression::UnresolvedNamed(
+                  Ident::from_token( self.get_current() ) );
         self.next();
         r
 

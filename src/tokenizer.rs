@@ -4,13 +4,13 @@ use streamreader::{StreamReader, Checkpoint};
 
 use filemap::{CharLoc, CharOffset, Loc};
 
-#[derive(Show, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Literal {
   Integer( i64 ),
   Boolean( bool )
 }
 
-#[derive(Show, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenKind {
   Comment( String ),
   Ident( String ),
@@ -21,7 +21,7 @@ pub enum TokenKind {
   EOF
 }
 
-#[derive(Show, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Token {
   kind : TokenKind,
   loc  : CharLoc
@@ -129,7 +129,7 @@ pub struct Tokenizer<'a> {
   checkpoints  : Vec<(Option<char>, Option<CharLoc>, CharIndices<'a>)>
 }
 
-#[derive(Show, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TokenizerError {
   // We were trying to parse a token when we ran out of characters
   UnexpectedEof,
