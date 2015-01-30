@@ -1,2 +1,4 @@
 /target
 src/tmp*
+*.sublime-project
+*.sublime-workspace

@@ -3,22 +3,19 @@ use std::mem::replace;
 use filemap::{CharLoc, Loc};
 use tokenizer;
 use tokenizer::{Token, TokenKind};
+use builtin::BuiltinType;
 
 type TLiteral = tokenizer::Literal;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum BuiltinType {
-  Int
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
   NamedType( Ident ),
-  BuiltinType( BuiltinType ),
   Unit,
   Tuple( Vec<Type> ),
   List( Box<Type> ),
-  Fn( Vec<Type>, Box<Type> )
+  Fn( Vec<Type>, Box<Type> ),
+  // Only appears after types have been resolved
+  BuiltinType( BuiltinType )
 }
 
 impl Type {

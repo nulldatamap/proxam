@@ -1,14 +1,11 @@
 use std::ffi::CString;
 
 use rustc::llvm;
+use rustc::llvm::{ContextRef, ValueRef, ModuleRef, TypeRef};
 
-use ast::{Function, Type, BuiltinType};
+use builtin::BuiltinType;
+use ast::{Function, Type};
 use hicr::{Module};
-
-type ContextRef = *mut llvm::Context_opaque;
-type ValueRef = *mut llvm::Value_opaque;
-type ModuleRef = *mut llvm::Module_opaque;
-type TypeRef = *mut llvm::Type_opaque;
 
 fn unit_type( ctx : ContextRef ) -> TypeRef {
   unsafe {
@@ -75,12 +72,11 @@ fn get_fn_type( ctx : ContextRef, args : Vec<Type>, ret : Type ) -> TypeRef {
 
 fn get_type( ctx : ContextRef, ty : Type ) -> TypeRef {
   match ty {
-    Type::BuiltinType( bit ) => get_builtin_type( ctx, bit ),
+    Type::BuiltinType( bit ) => bit.as_llvm_type( ctx ),
     Type::Tuple( el ) => get_tuple_type( ctx, el ),
     Type::Unit => unit_type( ctx ),
     Type::Fn( args, ret ) => get_fn_type( ctx, args, *ret ),
-    /*Type::NamedType( n )*/n => panic!( "Reached unresolved type in codegen: {:?}"
-                                  , n )
+    n => panic!( "Reached unresolved type in codegen: {:?}", n )
   }
 }
 
@@ -88,14 +84,6 @@ fn get_bare_type( ctx : ContextRef, ty : Type ) -> TypeRef {
   match ty {
     Type::Fn( args, ret ) => get_bare_fn_type( ctx, args, *ret ),
     v => get_type( ctx, v )
-  }
-}
-
-fn get_builtin_type( ctx : ContextRef, bit : BuiltinType ) -> TypeRef {
-  unsafe {
-    match bit {
-      BuiltinType::Int => llvm::LLVMInt32TypeInContext( ctx )
-    }
   }
 }
 

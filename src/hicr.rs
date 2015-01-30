@@ -3,6 +3,7 @@ use std::mem::replace;
 
 use filemap::{CharLoc};
 use ast::{Function, Type, Expression, Ident, Name};
+use builtin::builtin_type;
 
 // Highlevel Intermediate Code Representation
 
@@ -14,6 +15,7 @@ pub enum HicrError {
   FunctionTypeNotMatching( Function, Function ),
 
   UndefinedName( Name ),
+  UndefinedType( Ident ),
 }
 
 type HResult<T> = Result<T, HicrError>;
@@ -79,7 +81,7 @@ impl Module {
     // A list of all the new bindings that might be added
     let mut binds = Vec::new();
 
-    for (fnam, fun) in self.functions.iter_mut() {
+    for (_, fun) in self.functions.iter_mut() {
       if let Some( ref mut body ) = fun.body {
         try!( Module::resolve_namespace_expr( body
                                             , &fun.arg_names[]
@@ -102,17 +104,17 @@ impl Module {
                            , binds : &mut Vec<(Name, Function)> )
       -> HResult<()> {
     match expr {
-      named @ &mut Expression::UnresolvedNamed( .. ) => {
+      &mut Expression::UnresolvedNamed( .. ) => {
         if let Expression::UnresolvedNamed( idt ) =
-               replace( named, Expression::Invalid ) {
+               replace( expr, Expression::Invalid ) {
           if arguments.contains( &idt ) {
-            *named = Expression::Arg( idt );
+            *expr = Expression::Arg( idt );
           } else if binds.iter()
                          .any( |&( ref n, _ )|
                             n.matches( scope, &idt.text[] ) ) {
-            *named = Expression::Named( scope.ident_child( &idt ) );
+            *expr = Expression::Named( scope.ident_child( &idt ) );
           } else {
-            *named = Expression::Named( Name::from_ident( &idt, None ) );
+            *expr = Expression::Named( Name::from_ident( &idt, None ) );
           }
         }
       },
@@ -148,9 +150,9 @@ impl Module {
         scope.pop();
 
       },
-      letexpr @ &mut Expression::Let( .. ) => {
+      &mut Expression::Let( .. ) => {
         // Swap out the let expression from the AST
-        if let Expression::Let( fns, bdy ) = replace( letexpr
+        if let Expression::Let( fns, bdy ) = replace( expr
                                                     , Expression::Invalid ) {
           // Scope the bindings and add them to the module
           for letfn in fns.into_iter() {
@@ -158,13 +160,13 @@ impl Module {
           }
          
           // Then replace this let node with it's body
-          *letexpr = *bdy;
+          *expr = *bdy;
          
           // We enter the let body scope
           scope.push( "let".to_string() );
           
           // And resolve the body
-          try!( Module::resolve_namespace_expr( letexpr
+          try!( Module::resolve_namespace_expr( expr
                                               , arguments
                                               , scope
                                               , binds ) );
@@ -223,6 +225,45 @@ impl Module {
   }
 
   fn resolve_types( &mut self ) -> HResult<()> {
+
+    for (_, fun) in self.functions.iter_mut() {
+      try!( Module::resolve_type( &mut fun.ty ) );
+    }
+
+    Ok( () )
+  }
+
+  fn resolve_type( ty : &mut Type ) -> HResult<()> {
+    match ty {
+      &mut Type::NamedType( .. ) => {
+        // Unit is only a place-holder here
+        if let Type::NamedType( ty_name ) = replace( ty, Type::Unit ) {
+          if let Some( bit ) = builtin_type( &ty_name ) {
+            *ty = Type::BuiltinType( bit );
+          } else {
+            return Err( HicrError::UndefinedType( ty_name ) )
+          }
+        }
+      },
+      &mut Type::Unit => {},
+      &mut Type::Tuple( ref mut elms ) => {
+        for elm in elms.iter_mut() {
+          try!( Module::resolve_type( elm ) );
+        }
+      },
+      &mut Type::List( ref mut inner ) => {
+        try!( Module::resolve_type( &mut **inner ) );
+      },
+      &mut Type::Fn( ref mut args, ref mut ret ) => {
+        for arg in args.iter_mut() {
+          try!( Module::resolve_type( arg ) );
+        }
+
+        try!( Module::resolve_type( &mut **ret ) );
+      },
+
+      inv => panic!( "Type resolution not implemented for: {:?}", inv )
+    }
     Ok( () )
   }
 

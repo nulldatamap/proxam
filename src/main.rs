@@ -15,6 +15,7 @@ mod tokenizer;
 mod parser;
 mod ast;
 mod hicr;
+mod builtin;
 mod codegen;
 
 #[cfg(test)]

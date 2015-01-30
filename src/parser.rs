@@ -4,7 +4,7 @@ use std::slice::Iter;
 use filemap::{CharLoc, CharOffset};
 use streamreader::{StreamReader, Checkpoint};
 use tokenizer::{Token, TokenKind};
-use ast::{Function, Ident, Type, BuiltinType, Expression, Literal};
+use ast::{Function, Ident, Type, Expression, Literal};
 
 pub struct Parser<'a> {
   items   : Iter<'a, Token>,
