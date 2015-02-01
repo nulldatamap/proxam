@@ -22,7 +22,10 @@ pub enum Type {
   // It's comparable in type with a function who's only
   // taking the arguments the partial application is missing.
   // Application( Int, Int -> Bool 1 ) =~= Int -> Bool
-  Application( Box<Type>, u32 )
+  Application( Box<Type>, u32 ),
+  // Should never appear in a finished AST, it's only a placeholder
+  // for expression who haven't gotten their type resolved yet
+  Untyped
 }
 
 impl Type {
@@ -146,7 +149,7 @@ impl Name {
 }
 
 #[derive(Debug)]
-pub enum Expression {
+pub enum ExpressionKind {
   Let( Vec<Function>, Box<Expression> ),
   UnresolvedNamed( Ident ),
   Apply( Vec<Expression> ),
@@ -167,6 +170,23 @@ pub enum Expression {
 }
 
 #[derive(Debug)]
+pub struct Expression {
+  pub kind : ExpressionKind,
+  pub ty   : Type
+}
+
+impl Expression {
+  pub fn new( k : ExpressionKind, t : Type ) -> Expression {
+    Expression { kind: k, ty: t }
+  }
+}
+
+// Untyped expressipn
+pub fn uexpr( ek : ExpressionKind ) -> Expression {
+  Expression { kind: ek, ty: Type::Untyped }
+}
+
+#[derive(Debug)]
 pub struct Literal {
   pub lit : TLiteral,
   pub loc : CharLoc
@@ -179,6 +199,15 @@ impl Literal {
     }
 
     Literal{ lit: tk.get_literal(), loc: tk.loc() }
+  }
+
+  pub fn get_type( &self ) -> Type {
+    match &self.lit {
+      &tokenizer::Literal::Integer( .. ) => 
+        Type::BuiltinType( BuiltinType::Int ),
+      &tokenizer::Literal::Boolean( .. ) => 
+        Type::BuiltinType( BuiltinType::Bool )
+    }
   }
 
 }

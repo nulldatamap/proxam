@@ -4,7 +4,14 @@ use std::slice::Iter;
 use filemap::{CharLoc, CharOffset};
 use streamreader::{StreamReader, Checkpoint};
 use tokenizer::{Token, TokenKind};
-use ast::{Function, Ident, Type, Expression, Literal};
+use ast::{Function, Ident, Type, Expression, ExpressionKind, Literal, uexpr};
+
+// TODO: Fix identation
+
+// ExpressionKind::* => EK::*
+mod EK {
+  pub use ast::ExpressionKind::*;
+}
 
 pub struct Parser<'a> {
   items   : Iter<'a, Token>,
@@ -297,7 +304,7 @@ impl<'a> Parser<'a> {
     if rest.len() == 1 {
       Ok( rest.pop().unwrap() )
     } else {
-      Ok( Expression::Apply( rest ) )
+      Ok( uexpr( EK::Apply( rest ) ) )
     }
   }
 
@@ -310,15 +317,15 @@ impl<'a> Parser<'a> {
     
     for &(op, _) in ops {
       while self.get_current().is_symbol( op ) {
-        let op_tk = Expression::UnresolvedNamed(
+        let op_tk = uexpr( EK::UnresolvedNamed(
                       Ident::from_token( &self.get_current()
-                                              .as_ident() ) );
+                                              .as_ident() ) ) );
         
         self.next();
 
         let rhs = try!( self.lower_op_expr( op_precedence ) );
         // lhs <op> rhs becomes <op> lhs rhs 
-        lhs = Expression::Apply( vec![ op_tk, lhs, rhs ] );
+        lhs = uexpr( EK::Apply( vec![ op_tk, lhs, rhs ] ) );
       }
     }
 
@@ -355,13 +362,16 @@ impl<'a> Parser<'a> {
         let_expr
 
       } else if self.get_current().is_ident() {
-        let r = Expression::UnresolvedNamed(
-                  Ident::from_token( self.get_current() ) );
+        let r = uexpr( EK::UnresolvedNamed(
+                  Ident::from_token( self.get_current() ) ) );
         self.next();
         r
 
       } else if self.get_current().is_literal() {
-        let r = Expression::Literal( Literal::from_token( self.get_current() ) );
+        let lit = Literal::from_token( self.get_current() );
+        let ty = lit.get_type();
+
+        let r = Expression::new( EK::Literal( lit ), ty );
         self.next();
         r
 
@@ -405,9 +415,9 @@ impl<'a> Parser<'a> {
                           og.overhaul_context( "if else"
                                              , "valid expression" ) ) );
     
-    let ret = Expression::If( Box::new( cond )
+    let ret = uexpr( EK::If( Box::new( cond )
                             , Box::new( then )
-                            , Box::new( els  ) );
+                            , Box::new( els  ) ) );
 
     Ok( Some( ret ) )
   }
@@ -436,7 +446,7 @@ impl<'a> Parser<'a> {
 
     let expr = try!( self.expression() );
 
-    Ok( Some( Expression::Let( let_items, Box::new( expr ) ) ) )
+    Ok( Some( uexpr( EK::Let( let_items, Box::new( expr ) ) ) ) )
   }
 
   fn syntax_error( &mut self, whre : &'static str, wht : &'static str )

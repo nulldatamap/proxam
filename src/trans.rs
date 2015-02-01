@@ -2,16 +2,21 @@ use std::collections::hash_map::{HashMap, Entry};
 use std::mem::replace;
 
 use filemap::{CharLoc};
-use ast::{Function, Type, Expression, Ident, Name};
+use ast::{Function, Type, Expression, ExpressionKind, Ident, Name, uexpr};
 use builtin::{builtin_type, builtin_fn};
 
 // Code transformation and validation
+
+// ExpressionKind::* => EK::*
+mod EK {
+  pub use ast::ExpressionKind::*;
+}
 
 /*
 
   TODO: Make it so that multiple error can be reported instead
   of one at a time.
-
+  Fix identation
 */
 
 #[derive(Debug)]
@@ -116,35 +121,35 @@ impl Module {
                            , scope : &mut Name
                            , binds : &mut Vec<(Name, Function)> )
       -> TResult<()> {
-    match expr {
-      &mut Expression::UnresolvedNamed( .. ) => {
+    let ekind = &mut expr.kind;
+    match ekind {
+      &mut EK::UnresolvedNamed( .. ) => {
         // Take the unresolved name
-        if let Expression::UnresolvedNamed( idt ) =
-               replace( expr, Expression::Invalid ) {
+        if let EK::UnresolvedNamed( idt ) = replace( ekind, EK::Invalid ) {
           // And check if it's our function's argument
           if arguments.contains( &idt ) {
-            *expr = Expression::Arg( idt );
+            *ekind = EK::Arg( idt );
           // Or if it's one of the bound names
           } else if binds.iter()
                          .any( |&( ref n, _ )|
                             n.matches( scope, &idt.text[] ) ) {
-            *expr = Expression::Named( scope.ident_child( &idt ) );
+            *ekind = EK::Named( scope.ident_child( &idt ) );
           // Or a builtin function
           } else if let Some( bif ) = builtin_fn( &idt ) {
-            *expr = Expression::BuiltinFn( bif );
+            *ekind = EK::BuiltinFn( bif );
           // Else assume it's a toplevel name
           } else {
-            *expr = Expression::Named( Name::from_ident( &idt, None ) );
+            *ekind = EK::Named( Name::from_ident( &idt, None ) );
           }
         } 
       },
-      &mut Expression::Apply( ref mut exprs ) => {
+      &mut EK::Apply( ref mut exprs ) => {
         for e in exprs.iter_mut() {
           try!( Module::resolve_namespace_expr( e, arguments, scope, binds ) );
         }
       },
-      &mut Expression::Literal( .. ) => {},
-      &mut Expression::If( ref mut cnd, ref mut thn, ref mut els ) => {
+      &mut EK::Literal( .. ) => {},
+      &mut EK::If( ref mut cnd, ref mut thn, ref mut els ) => {
         // Enter the if conditon scope
         scope.push( "if".to_string() );
         try!( Module::resolve_namespace_expr( &mut **cnd
@@ -170,10 +175,9 @@ impl Module {
         scope.pop();
 
       },
-      &mut Expression::Let( .. ) => {
+      &mut EK::Let( .. ) => {
         // Swap out the let expression from the AST
-        if let Expression::Let( mut fns, bdy )
-             = replace( expr, Expression::Invalid ) {
+        if let EK::Let( mut fns, mut bdy ) = replace( ekind, EK::Invalid ) {
           // Resolve the namespaces for the bindings
           for fun in fns.iter_mut() {
             if let Some( ref mut bdy ) = fun.body {
@@ -189,17 +193,17 @@ impl Module {
             binds.push( (scope.clone(), letfn) );
           }
          
-          // Then replace this let node with it's body
-          *expr = *bdy;
-         
           // We enter the let body scope
           scope.push( "let".to_string() );
           
-          // And resolve the body
-          try!( Module::resolve_namespace_expr( expr
+          // Resolve the body
+          try!( Module::resolve_namespace_expr( &mut *bdy
                                               , arguments
                                               , scope
                                               , binds ) );
+
+          // Then replace this let node with it's body
+          *ekind = bdy.kind;
 
           // And pop the scope
           scope.pop();
@@ -223,21 +227,21 @@ impl Module {
   }
 
   fn validate_name_expr( &self, expr : &Expression ) -> TResult<()> {
-    match expr {
-      &Expression::Literal( .. ) 
-      | &Expression::Arg( .. )
-      | &Expression::BuiltinFn( .. ) => {}, // *BING* SKIP!
-      &Expression::Apply( ref exprs ) => {
+    match &expr.kind {
+      &EK::Literal( .. ) 
+      | &EK::Arg( .. )
+      | &EK::BuiltinFn( .. ) => {}, // *BING* SKIP!
+      &EK::Apply( ref exprs ) => {
         for e in exprs.iter() {
           try!( self.validate_name_expr( e ) );
         }
       },
-      &Expression::If( ref cnd, ref thn, ref els ) => {
+      &EK::If( ref cnd, ref thn, ref els ) => {
         try!( self.validate_name_expr( &**cnd ) );
         try!( self.validate_name_expr( &**thn ) );
         try!( self.validate_name_expr( &**els ) );
       },
-      &Expression::Named( ref name ) => {
+      &EK::Named( ref name ) => {
         if name.is_toplevel() {
 
           if !self.functions.keys().any( |k| k.same( name ) ) {
@@ -263,19 +267,19 @@ impl Module {
   }
 
   fn resolve_application_expr( expr : &mut Expression ) -> TResult<()> {
-    match expr {
-      &mut Expression::Literal( .. )
-      | &mut Expression::Named( .. )
-      | &mut Expression::BuiltinFn( .. ) 
-      | &mut Expression::Arg( .. ) => {},
-      &mut Expression::If( ref mut cnd, ref mut thn, ref mut els ) => {
+    let ekind = &mut expr.kind;
+    match ekind {
+      &mut EK::Literal( .. )
+      | &mut EK::Named( .. )
+      | &mut EK::BuiltinFn( .. ) 
+      | &mut EK::Arg( .. ) => {},
+      &mut EK::If( ref mut cnd, ref mut thn, ref mut els ) => {
         try!( Module::resolve_application_expr( &mut **cnd ) );
         try!( Module::resolve_application_expr( &mut **thn ) );
         try!( Module::resolve_application_expr( &mut **els ) );
       },
-      &mut Expression::Apply( .. ) => {
-        if let Expression::Apply( mut elms ) = replace( expr
-                                                      , Expression::Invalid ) {
+      &mut EK::Apply( .. ) => {
+        if let EK::Apply( mut elms ) = replace( ekind, EK::Invalid ) {
           if elms.len() == 0 {
             panic!( "Reached an application in the AST with zero length!" )
           }
@@ -286,21 +290,21 @@ impl Module {
           }
 
           // Match the to-be-applied value
-          match callee {
-            Expression::BuiltinFn( bif ) =>
-              *expr = Expression::BuiltinCall( bif, elms ),
-            Expression::If( .. )
-            | Expression::Literal( .. )
-            | Expression::Arg( .. )
-            | Expression::Named( .. ) =>
-              *expr = Expression::FnCall( Box::new( callee ), elms ),
+          match callee.kind {
+            EK::BuiltinFn( bif ) =>
+              *ekind = EK::BuiltinCall( bif, elms ),
+            EK::If( .. )
+            | EK::Literal( .. )
+            | EK::Arg( .. )
+            | EK::Named( .. ) =>
+              *ekind = EK::FnCall( Box::new( callee ), elms ),
             ref inv => panic!( "Encountered invalid callee in application \
 resolution: {:?}", inv )
           }
         }
       },
       ref inv => panic!( "Application resolution is not implemented for: {:?}"
-                   , expr )
+                       , ekind )
     }
 
     Ok( () )
@@ -352,6 +356,14 @@ resolution: {:?}", inv )
   fn check_types( &mut self ) -> TResult<()> {
     Ok( () )
   }
+
+  /*
+  
+    Make `resolve_type` work on the type tree ( through tree )
+    Check the type consistency through the tree
+
+  */
+
 }
 
 pub fn validate_module( name : String, fns : Vec<Function> )

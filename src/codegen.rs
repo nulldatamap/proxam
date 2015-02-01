@@ -2,14 +2,20 @@ use std::ffi::CString;
 use std::collections::HashMap;
 
 use rustc::llvm;
-use rustc::llvm::{ContextRef, ValueRef, ModuleRef, TypeRef, BuilderRef};
+use rustc::llvm::{ContextRef, ValueRef, ModuleRef
+                 , TypeRef, BuilderRef, BasicBlockRef};
 
 use tokenizer;
 use builtin::{BuiltinType, BuiltinFn};
-use ast::{Function, Type, Expression, Literal};
+use ast::{Function, Type, Expression, ExpressionKind, Literal, Ident};
 use trans::{Module};
 
 type ValueMap = HashMap<String, ValueRef>;
+
+// ExpressionKind::* => EK::*
+mod EK {
+  pub use ast::ExpressionKind::*;
+}
 
 pub struct Codegen {
   functions : ValueMap,
@@ -58,7 +64,7 @@ impl Codegen {
   
   fn generate_fn( &mut self, fname : String, func : Function ) {
     unsafe {
-      let ftype = self.get_bare_type( func.ty.to_fn() );
+      let ftype = self.get_bare_type( &func.ty.to_fn() );
       let cname = CString::from_slice( fname.as_bytes() );
       let f = llvm::LLVMGetOrInsertFunction( self.module
                                            , cname.as_ptr()
@@ -75,25 +81,25 @@ impl Codegen {
       }
 
       if let Some( body ) = func.body {
-        let centry = CString::from_slice( "entry".as_bytes() );
-        
         let entry = llvm::LLVMAppendBasicBlockInContext( self.context
                                                        , f
-                                                       , centry.as_ptr() );
+                                                       , noname() );
         
         let builder = llvm::LLVMCreateBuilderInContext( self.context );
         
         llvm::LLVMPositionBuilderAtEnd( builder, entry );
-        println!("Building function body");
+
         llvm::LLVMBuildRet( builder
-                          , self.get_expression_value( builder, f, body ) );
+                          , self.get_expression_value( builder
+                                                     , f, &func.arg_names[]
+                                                     , body ) );
       }
 
     }
   }
 
-  fn get_bare_fn_type( &mut self, args : Vec<Type>, ret : Type ) -> TypeRef {
-    let targs : Vec<TypeRef> = args.into_iter()
+  fn get_bare_fn_type( &mut self, args : &[Type], ret : &Type ) -> TypeRef {
+    let targs : Vec<TypeRef> = args.iter()
                                    .map( |t| self.get_type( t ) )
                                    .collect();
     unsafe {
@@ -102,18 +108,18 @@ impl Codegen {
     }
   }
 
-  fn get_fn_type( &mut self, args : Vec<Type>, ret : Type ) -> TypeRef {
+  fn get_fn_type( &mut self, args : &[Type], ret : &Type ) -> TypeRef {
     unsafe {
       llvm::LLVMPointerType( self.get_bare_fn_type( args, ret ), 0 )
     }
   }
 
-  fn get_type( &mut self, ty : Type ) -> TypeRef {
+  fn get_type( &mut self, ty : &Type ) -> TypeRef {
     match ty {
-      Type::BuiltinType( bit ) => bit.as_llvm_type( self.context ),
-      Type::Tuple( el ) => self.get_tuple_type( el ),
-      Type::Unit => self.unit_type(),
-      Type::Fn( args, ret ) => self.get_fn_type( args, *ret ),
+      &Type::BuiltinType( ref bit ) => bit.as_llvm_type( self.context ),
+      &Type::Tuple( ref el ) => self.get_tuple_type( &el[] ),
+      &Type::Unit => self.unit_type(),
+      &Type::Fn( ref args, ref ret ) => self.get_fn_type( &args[], &**ret ),
       n => panic!( "Reached unresolved type in codegen: {:?}", n )
     }
   }
@@ -124,15 +130,15 @@ impl Codegen {
     }
   }
 
-  fn get_bare_type( &mut self, ty : Type ) -> TypeRef {
+  fn get_bare_type( &mut self, ty : &Type ) -> TypeRef {
     match ty {
-      Type::Fn( args, ret ) => self.get_bare_fn_type( args, *ret ),
+      &Type::Fn( ref args, ref ret ) => self.get_bare_fn_type( &args[], &**ret ),
       v => self.get_type( v )
     }
   }
 
-  fn get_tuple_type( &mut self, tys : Vec<Type> ) -> TypeRef {
-    let lltys : Vec<TypeRef> = tys.into_iter()
+  fn get_tuple_type( &mut self, tys : &[Type] ) -> TypeRef {
+    let lltys : Vec<TypeRef> = tys.iter()
                                   .map( |v| self.get_type( v ) )
                                   .collect();
     unsafe {
@@ -142,19 +148,66 @@ impl Codegen {
   }
 
   fn get_expression_value( &mut self, builder : BuilderRef
-                         , fun : ValueRef, expr : Expression ) -> ValueRef {
-    match expr {
-      Expression::Literal( lit ) => self.get_literal_value( builder, lit ),
-      Expression::BuiltinCall( bif, args ) => {
+                         , fun : ValueRef, args : &[Ident]
+                         , expr : Expression ) -> ValueRef {
+    match expr.kind {
+      EK::Literal( lit ) => self.get_literal_value( builder, lit ),
+      EK::BuiltinCall( bif, bargs ) => {
         let vargs : Vec<ValueRef>;
-        vargs = args.into_iter()
-                    .map( |v| self.get_expression_value( builder, fun, v ) )
-                    .collect();
+        vargs = bargs.into_iter()
+                     .map( |v| self.get_expression_value( builder, fun
+                                                        , args, v ) )
+                     .collect();
 
         bif.as_llvm_value( builder, &vargs[] )
       },
-      //Expression::Arg( name ) => get_argument_value( func, name ),
+      EK::Arg( name ) => self.get_argument_value( fun, args, name ),
+      EK::If( cnd, thn, els ) => self.get_if_value( builder, fun, args
+                                                          , *cnd, *thn, *els ),
       inv => panic!( "Codegen not implemented for expression: {:?}", inv )
+    }
+  }
+
+  fn get_argument_value( &mut self, fun : ValueRef, args : &[Ident]
+                       , name : Ident ) -> ValueRef {
+    let i = args.position_elem( &name ).expect( "Invalid argument in codegen." );
+    unsafe {
+      llvm::get_param( fun, i as u32 )
+    }
+  }
+
+  fn get_if_value( &mut self, builder : BuilderRef, fun : ValueRef
+                 , args : &[Ident] , cnd : Expression, thn : Expression
+                 , els : Expression ) -> ValueRef {
+    unsafe {
+      
+      let ifty = self.get_type( &thn.ty );
+
+      let cndv = self.get_expression_value( builder, fun, args, cnd );
+      let thnv = self.get_expression_value( builder, fun, args, thn );
+      let elsv = self.get_expression_value( builder, fun, args, els );
+      let tbb = llvm::LLVMAppendBasicBlockInContext( self.context
+                                                   , fun, noname() );
+      let ebb = llvm::LLVMAppendBasicBlockInContext( self.context
+                                                   , fun, noname() );
+      let rbb = llvm::LLVMAppendBasicBlockInContext( self.context
+                                                   , fun, noname() );
+      llvm::LLVMBuildCondBr( builder, cndv, tbb, ebb );
+      let rphi = llvm::LLVMBuildPhi( builder, ifty
+                                   , noname() );
+
+      let bbs = [ tbb, ebb ];
+      let vs = [ thnv, elsv ];
+
+      llvm::LLVMAddIncoming( rphi, &vs as *const ValueRef
+                           , &bbs as *const BasicBlockRef, 2 );
+
+      llvm::LLVMPositionBuilderAtEnd( builder, tbb );
+      llvm::LLVMBuildBr( builder, rbb );
+      llvm::LLVMPositionBuilderAtEnd( builder, tbb );
+      llvm::LLVMBuildBr( builder, rbb );
+
+      rphi
     }
   }
 
