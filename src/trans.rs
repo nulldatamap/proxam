@@ -3,22 +3,30 @@ use std::mem::replace;
 
 use filemap::{CharLoc};
 use ast::{Function, Type, Expression, Ident, Name};
-use builtin::builtin_type;
+use builtin::{builtin_type, builtin_fn};
 
-// Highlevel Intermediate Code Representation
+// Code transformation and validation
+
+/*
+
+  TODO: Make it so that multiple error can be reported instead
+  of one at a time.
+
+*/
 
 #[derive(Debug)]
-pub enum HicrError {
+pub enum TransError {
   UndeclaredFunction( Function ),
   AlreadyDeclaredFunction( Function, Function ),
   AlreadyDefinedFunction( Function, Function ),
   FunctionTypeNotMatching( Function, Function ),
+  InvalidArgumentList( Function ),
 
   UndefinedName( Name ),
   UndefinedType( Ident ),
 }
 
-type HResult<T> = Result<T, HicrError>;
+type TResult<T> = Result<T, TransError>;
 
 #[derive(Debug)]
 pub struct Module {
@@ -32,14 +40,19 @@ impl Module {
     Module{ name: name, functions: HashMap::new() }
   }
 
-  fn insert_toplevel_fn( &mut self, fun : Function ) -> HResult<()> {
+  fn insert_toplevel_fn( &mut self, fun : Function ) -> TResult<()> {
     self.insert_fn( fun, &mut Name::root() )
   }
 
-  fn insert_fn( &mut self, fun : Function, scope : &mut Name ) -> HResult<()> {
+  fn insert_fn( &mut self, fun : Function, scope : &mut Name ) -> TResult<()> {
     let mut fnam = scope.ident_child( &fun.name );
     fnam.no_loc(); // Remove the source location from this name
     
+    // Check if the arguments of the function match it's type
+    if fun.arg_names.len() as u32 != fun.ty.argument_count() {
+      return Err( TransError::InvalidArgumentList( fun ) )
+    }
+
     let entry = self.functions.entry( fnam );
     match entry {
       Entry::Vacant( va ) => { va.insert( fun ); },
@@ -47,27 +60,27 @@ impl Module {
         match (&oc.get().body, &fun.body) {
           // In case we have to implementations
           (&Some( _ ), &Some( _ ))
-            => return Err( HicrError::AlreadyDefinedFunction( fun
+            => return Err( TransError::AlreadyDefinedFunction( fun
                                                             , oc.remove() ) ),
           // In case there's already an implementation 
           // and this is just a declaration
           (&Some( _ ), &None) => {
             if oc.get().ty != fun.ty {
-              return Err( HicrError::FunctionTypeNotMatching( fun
+              return Err( TransError::FunctionTypeNotMatching( fun
                                                             , oc.remove() ) )
             }
           },
           // In case there's a declaration and this is a implementation
           (&None, &Some( _ )) => {
             if oc.get().ty != fun.ty {
-              return Err( HicrError::FunctionTypeNotMatching( fun
+              return Err( TransError::FunctionTypeNotMatching( fun
                                                             , oc.remove() ) )
             }
             oc.insert( fun );
           },
           // In case we have to delcarations
           (&None, &None) => {
-            return Err( HicrError::AlreadyDeclaredFunction( fun
+            return Err( TransError::AlreadyDeclaredFunction( fun
                                                           , oc.remove() ) ) 
           }
         }
@@ -77,7 +90,7 @@ impl Module {
     Ok( () )
   }
 
-  fn resolve_namespaces( &mut self ) -> HResult<()> {
+  fn resolve_namespaces( &mut self ) -> TResult<()> {
     // A list of all the new bindings that might be added
     let mut binds = Vec::new();
 
@@ -102,21 +115,28 @@ impl Module {
                            , arguments : &[Ident]
                            , scope : &mut Name
                            , binds : &mut Vec<(Name, Function)> )
-      -> HResult<()> {
+      -> TResult<()> {
     match expr {
       &mut Expression::UnresolvedNamed( .. ) => {
+        // Take the unresolved name
         if let Expression::UnresolvedNamed( idt ) =
                replace( expr, Expression::Invalid ) {
+          // And check if it's our function's argument
           if arguments.contains( &idt ) {
             *expr = Expression::Arg( idt );
+          // Or if it's one of the bound names
           } else if binds.iter()
                          .any( |&( ref n, _ )|
                             n.matches( scope, &idt.text[] ) ) {
             *expr = Expression::Named( scope.ident_child( &idt ) );
+          // Or a builtin function
+          } else if let Some( bif ) = builtin_fn( &idt ) {
+            *expr = Expression::BuiltinFn( bif );
+          // Else assume it's a toplevel name
           } else {
             *expr = Expression::Named( Name::from_ident( &idt, None ) );
           }
-        }
+        } 
       },
       &mut Expression::Apply( ref mut exprs ) => {
         for e in exprs.iter_mut() {
@@ -124,10 +144,10 @@ impl Module {
         }
       },
       &mut Expression::Literal( .. ) => {},
-      &mut Expression::If( ref mut cond, ref mut thn, ref mut els ) => {
+      &mut Expression::If( ref mut cnd, ref mut thn, ref mut els ) => {
         // Enter the if conditon scope
         scope.push( "if".to_string() );
-        try!( Module::resolve_namespace_expr( &mut **cond
+        try!( Module::resolve_namespace_expr( &mut **cnd
                                             , arguments
                                             , scope
                                             , binds ) );
@@ -152,8 +172,18 @@ impl Module {
       },
       &mut Expression::Let( .. ) => {
         // Swap out the let expression from the AST
-        if let Expression::Let( fns, bdy ) = replace( expr
-                                                    , Expression::Invalid ) {
+        if let Expression::Let( mut fns, bdy )
+             = replace( expr, Expression::Invalid ) {
+          // Resolve the namespaces for the bindings
+          for fun in fns.iter_mut() {
+            if let Some( ref mut bdy ) = fun.body {
+              try!( Module::resolve_namespace_expr( bdy
+                                                  , &fun.arg_names[]
+                                                  , scope
+                                                  , binds ) );
+            }
+          }
+
           // Scope the bindings and add them to the module
           for letfn in fns.into_iter() {
             binds.push( (scope.clone(), letfn) );
@@ -181,7 +211,7 @@ impl Module {
     Ok( () )
   }
 
-  fn validate_names( &self ) -> HResult<()> {
+  fn validate_names( &self ) -> TResult<()> {
 
     for fun in self.functions.values() {
       if let Some( ref bdy ) = fun.body {
@@ -192,17 +222,18 @@ impl Module {
     Ok( () )
   }
 
-  fn validate_name_expr( &self, expr : &Expression ) -> HResult<()> {
+  fn validate_name_expr( &self, expr : &Expression ) -> TResult<()> {
     match expr {
-      &Expression::Literal( .. ) => {},
-      &Expression::Arg( .. ) => {}, // *BING* SKIP!
+      &Expression::Literal( .. ) 
+      | &Expression::Arg( .. )
+      | &Expression::BuiltinFn( .. ) => {}, // *BING* SKIP!
       &Expression::Apply( ref exprs ) => {
         for e in exprs.iter() {
           try!( self.validate_name_expr( e ) );
         }
       },
-      &Expression::If( ref cond, ref thn, ref els ) => {
-        try!( self.validate_name_expr( &**cond ) );
+      &Expression::If( ref cnd, ref thn, ref els ) => {
+        try!( self.validate_name_expr( &**cnd ) );
         try!( self.validate_name_expr( &**thn ) );
         try!( self.validate_name_expr( &**els ) );
       },
@@ -210,7 +241,7 @@ impl Module {
         if name.is_toplevel() {
 
           if !self.functions.keys().any( |k| k.same( name ) ) {
-            return Err( HicrError::UndefinedName( name.clone() ) )
+            return Err( TransError::UndefinedName( name.clone() ) )
           }
         }
       },
@@ -220,11 +251,62 @@ impl Module {
     Ok( () )
   }
 
-  fn resolve_applications( &mut self ) -> HResult<()> {
+  fn resolve_applications( &mut self ) -> TResult<()> {
+
+    for (_, fun) in self.functions.iter_mut() {
+      if let Some( ref mut bdy ) = fun.body {
+        try!( Module::resolve_application_expr( bdy ) );
+      }
+    }
+
     Ok( () )
   }
 
-  fn resolve_types( &mut self ) -> HResult<()> {
+  fn resolve_application_expr( expr : &mut Expression ) -> TResult<()> {
+    match expr {
+      &mut Expression::Literal( .. )
+      | &mut Expression::Named( .. )
+      | &mut Expression::BuiltinFn( .. ) 
+      | &mut Expression::Arg( .. ) => {},
+      &mut Expression::If( ref mut cnd, ref mut thn, ref mut els ) => {
+        try!( Module::resolve_application_expr( &mut **cnd ) );
+        try!( Module::resolve_application_expr( &mut **thn ) );
+        try!( Module::resolve_application_expr( &mut **els ) );
+      },
+      &mut Expression::Apply( .. ) => {
+        if let Expression::Apply( mut elms ) = replace( expr
+                                                      , Expression::Invalid ) {
+          if elms.len() == 0 {
+            panic!( "Reached an application in the AST with zero length!" )
+          }
+          let callee = elms.remove( 0 );
+
+          for arge in elms.iter_mut() {
+            try!( Module::resolve_application_expr( arge ) );
+          }
+
+          // Match the to-be-applied value
+          match callee {
+            Expression::BuiltinFn( bif ) =>
+              *expr = Expression::BuiltinCall( bif, elms ),
+            Expression::If( .. )
+            | Expression::Literal( .. )
+            | Expression::Arg( .. )
+            | Expression::Named( .. ) =>
+              *expr = Expression::FnCall( Box::new( callee ), elms ),
+            ref inv => panic!( "Encountered invalid callee in application \
+resolution: {:?}", inv )
+          }
+        }
+      },
+      ref inv => panic!( "Application resolution is not implemented for: {:?}"
+                   , expr )
+    }
+
+    Ok( () )
+  }
+
+  fn resolve_types( &mut self ) -> TResult<()> {
 
     for (_, fun) in self.functions.iter_mut() {
       try!( Module::resolve_type( &mut fun.ty ) );
@@ -233,7 +315,7 @@ impl Module {
     Ok( () )
   }
 
-  fn resolve_type( ty : &mut Type ) -> HResult<()> {
+  fn resolve_type( ty : &mut Type ) -> TResult<()> {
     match ty {
       &mut Type::NamedType( .. ) => {
         // Unit is only a place-holder here
@@ -241,7 +323,7 @@ impl Module {
           if let Some( bit ) = builtin_type( &ty_name ) {
             *ty = Type::BuiltinType( bit );
           } else {
-            return Err( HicrError::UndefinedType( ty_name ) )
+            return Err( TransError::UndefinedType( ty_name ) )
           }
         }
       },
@@ -267,13 +349,13 @@ impl Module {
     Ok( () )
   }
 
-  fn check_types( &mut self ) -> HResult<()> {
+  fn check_types( &mut self ) -> TResult<()> {
     Ok( () )
   }
 }
 
 pub fn validate_module( name : String, fns : Vec<Function> )
-       -> HResult<Module> {
+       -> TResult<Module> {
   let mut module = Module::new( name );
   
   for fun in fns.into_iter() {

@@ -1,7 +1,8 @@
 use rustc::llvm;
-use rustc::llvm::{ContextRef, ValueRef, ModuleRef, TypeRef};
+use rustc::llvm::{ContextRef, ValueRef, ModuleRef, TypeRef, BuilderRef};
 
 use ast::Ident;
+use codegen::noname;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BuiltinType {
@@ -28,4 +29,38 @@ pub fn builtin_type( tn : &Ident ) -> Option<BuiltinType> {
   } )
 }
 
+#[derive(Show)]
+pub enum BuiltinFn {
+  Add,
+  Cmp( u32 )
+}
+
+impl BuiltinFn {
+  pub fn as_llvm_value( &self, bldr : BuilderRef, args : &[ValueRef] )
+             -> ValueRef {
+    unsafe {
+      match args {
+        [ a, b ] =>
+          match self {
+            &BuiltinFn::Add => return llvm::LLVMBuildAdd( bldr, a, b, noname() ),
+            &BuiltinFn::Cmp( op ) => return llvm::LLVMBuildICmp( bldr
+                                                               , op
+                                                               , a, b
+                                                               , noname() ),
+          },
+        _ => {}
+      }
+    }
+    panic!( "Malformed builtin function call curing codegen: {:?} - {:?}"
+          , self, args )
+  }
+}
+
+pub fn builtin_fn( name : &Ident ) -> Option<BuiltinFn> {
+  Some( match &name.text[] {
+    "+" => BuiltinFn::Add,
+    "==" => BuiltinFn::Cmp( llvm::IntPredicate::IntEQ as u32 ),
+    _ => return None
+  } )
+}
 

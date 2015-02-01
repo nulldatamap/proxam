@@ -1,2 +1,3 @@
 
-def x : Int, (Int, Bool -> Bool,) -> Bool
+def inc x : Int -> Int = let a : Int = 0 + 1 in 0
+

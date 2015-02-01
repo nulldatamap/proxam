@@ -7,6 +7,7 @@ extern crate rustc;
 use filemap::Loc;
 use tokenizer::Tokenizer;
 use parser::Parser;
+use codegen::Codegen;
 
 mod filemap;
 #[macro_use]
@@ -14,7 +15,7 @@ mod streamreader;
 mod tokenizer;
 mod parser;
 mod ast;
-mod hicr;
+mod trans;
 mod builtin;
 mod codegen;
 
@@ -64,8 +65,8 @@ fn main() {
 
   //println!( "=> {:?}", ast );
 
-  let module = match hicr::validate_module( test_module_name.to_string()
-                                          , ast ) {
+  let module = match trans::validate_module( test_module_name.to_string()
+                                           , ast ) {
     Ok( md ) => md,
     Err( err ) => {
       println!("Failed to validate module: {:?}", err );
@@ -75,7 +76,7 @@ fn main() {
 
   println!("=> {:?}", module );
 
-  let llmodule = codegen::generate_module( test_module_name, module );
+  let llmodule = Codegen::generate_module( module );
 
   unsafe {
     rustc::llvm::LLVMDumpModule( llmodule );

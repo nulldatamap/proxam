@@ -3,7 +3,7 @@ use std::mem::replace;
 use filemap::{CharLoc, Loc};
 use tokenizer;
 use tokenizer::{Token, TokenKind};
-use builtin::BuiltinType;
+use builtin::{BuiltinType, BuiltinFn};
 
 type TLiteral = tokenizer::Literal;
 
@@ -15,7 +15,14 @@ pub enum Type {
   List( Box<Type> ),
   Fn( Vec<Type>, Box<Type> ),
   // Only appears after types have been resolved
-  BuiltinType( BuiltinType )
+  BuiltinType( BuiltinType ),
+  // An application type, a type representing a partially
+  // applied function. Containing the function's type and
+  // how many of the arguments have been applied so far.
+  // It's comparable in type with a function who's only
+  // taking the arguments the partial application is missing.
+  // Application( Int, Int -> Bool 1 ) =~= Int -> Bool
+  Application( Box<Type>, u32 )
 }
 
 impl Type {
@@ -141,13 +148,20 @@ impl Name {
 #[derive(Debug)]
 pub enum Expression {
   Let( Vec<Function>, Box<Expression> ),
-  If( Box<Expression>, Box<Expression>, Box<Expression> ),
-  Literal( Literal ),
   UnresolvedNamed( Ident ),
   Apply( Vec<Expression> ),
+  // The above will be phased out of the tree
+  If( Box<Expression>, Box<Expression>, Box<Expression> ),
+  Literal( Literal ),
   // Can't be created from the parser:
   Arg( Ident ),
   Named( Name ),
+  BuiltinFn( BuiltinFn ),
+  // The call nodes are transformed from Apply
+  BuiltinCall( BuiltinFn, Vec<Expression> ),
+  FnCall( Box<Expression>, Vec<Expression> ),
+  // PartialApplication
+  // PartialFinsiher
   // Should never appear in a fully built expression
   Invalid
 }

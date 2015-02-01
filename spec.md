@@ -54,7 +54,7 @@ literal = INTEGER
   - [ ] tokenizer
   - [ ] parser
   - [ ] ast
-  - [ ] hicr
+  - [ ] trans
   - [ ] codegen
 * [ ] Data type documentations
   - [ ] main
@@ -63,7 +63,7 @@ literal = INTEGER
   - [ ] tokenizer
   - [ ] parser
   - [ ] ast
-  - [ ] hicr
+  - [ ] trans
   - [ ] codegen
 * In-code documentation
   - [ ] main
@@ -72,7 +72,7 @@ literal = INTEGER
   - [ ] tokenizer
   - [ ] parser
   - [ ] ast
-  - [ ] hicr
+  - [ ] trans
   - [ ] codegen
 
 # Required tests:
