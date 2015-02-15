@@ -8,7 +8,7 @@ COMMENT := ";" (-"\n")* "\n"
 IDENT := (<is_alphanumeric_lower> | "_")(<is_alphanumeric> | "_" | "'")*
 TYPE_NAME := (<is_alphanumeric_upper> | "_")(<is_alphanumeric> | "_" | "'")*
 SYMBOL := SINGLE_SYMBOL | MULTI_SYMBOL+
-KEYWORD = "if" | "then" | "else" | "let" | "in" | "def"
+KEYWORD = "if" | "then" | "else" | "let" | "in" | "def" | "where"
 SINGLE_SYMBOL := "(" | ")" | "[" | "]"
 MULTI_SYMBOL := "!" | "#" | "%" | "&" | "/" | "=" | "?" | "`" | "´" | "@" | "$" | "{" | "}" | "|" | "~" | "^" | "*" | "<" | ">" | "," | "." | ":" | "-" | "\\"
 DIGIT := "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
@@ -25,12 +25,14 @@ FLOAT := DIGIT "." DIGIT?
 ```antlr
 module := def*
 def := "def" function
-function := ident (ident)* ":" type ("=" expression)?
+function := ident (ident)* ":" type where? ("=" expression)?
 type := function_type
 function_type := _type ("," _type)* "->" type
-_type := tuple_type | list_type | TYPE_NAME
-tuple_type = "(" ")" | "(" type ")" | "(" (type ",")+ ")"
-list_type = "[" type "]"
+_type := tuple_type | list_type | TYPE_NAME | IDENT
+tuple_type := "(" ")" | "(" type ")" | "(" (type ",")+ ")"
+list_type := "[" type "]"
+where := "where" type_constraint ("," type_constraint)*
+type_constraint := TYPE_NAME type+
 expression := appl_expr
 appl_expr := op_expr n (op_expr n)*
 op_expr (x <- 0..(n - 1)) := op_expr (x + 1) <op:SYMBOL x> op_expr (x + 1)
