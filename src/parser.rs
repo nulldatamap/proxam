@@ -1,10 +1,12 @@
  
 use std::slice::Iter;
 
-use filemap::{CharLoc, CharOffset};
+use filemap::{CharLoc, CharOffset, Loc};
 use streamreader::{StreamReader, Checkpoint};
 use tokenizer::{Token, TokenKind};
-use ast::{Function, Ident, Type, Expression, ExpressionKind, Literal, uexpr};
+use tokenizer; 
+use ast::{Function, Ident, Type, Expression, ExpressionKind, Literal, uexpr
+         , Class};
 
 // TODO: Fix identation
 
@@ -41,7 +43,7 @@ const operator_count : usize = 14;
 static operators : [(&'static str, u32); operator_count] =
        [ ("<|", 0), ("|>", 0) // Lowest precedence
        , ("=", 1)
-       , ("==", 2), ("/=", 2)
+       , ("==", 2), ("!=", 2)
        , ("<", 3), (">", 3), (">=", 3), ("<=", 3)
        , ("+", 4), ("-", 4)
        , ("*", 5), ("/", 5)
@@ -121,6 +123,8 @@ impl<'a> Parser<'a> {
 
     let ty = try!( self.any_type() );
 
+    let constraints = try!( self.where_clause() );
+
     // Parse the body
     let body = if self.get_current().is_symbol( "=" ) {
       self.next();
@@ -129,7 +133,7 @@ impl<'a> Parser<'a> {
     } else {
       None
     };
-    Ok( Function::new( fn_name, arg_names, ty, body ) )
+    Ok( Function::new( fn_name, arg_names, ty, body, constraints ) )
   }
 
   fn any_type( &mut self ) -> PResult<Type> {
@@ -276,13 +280,65 @@ impl<'a> Parser<'a> {
   fn named_type( &mut self ) -> PResult<Type> {
     let first = self.get_current();
 
-    if !first.is_type_name() {
-      return Err( self.syntax_error( "type", "a type name" ) )
+    if first.is_type_name() {
+      self.next();
+
+      Ok( Type::NamedType( Ident::from_token( &first.as_ident() ) ) )
+    } else if first.is_ident() {
+      self.next();
+
+      Ok( Type::Generic( Ident::from_token( first ), Vec::new() ) )
+    } else {
+      Err( self.syntax_error( "type"
+                            , "a type name or generic type parameter" ) )
+    }
+  }
+
+  fn where_clause( &mut self ) -> PResult<Vec<Class>> {
+    if !self.get_current().is_keyword( "where" ) {
+      return Ok( Vec::new() )
     }
 
     self.next();
 
-    Ok( Type::NamedType( Ident::from_token( &first.as_ident() ) ) )
+    let mut constraints = Vec::new();
+
+    loop {
+      constraints.push( try!( self.class() ) );
+      if !self.get_current().is_symbol( "," ) {
+        break
+      }
+      self.next();
+    }
+
+    Ok( constraints )
+  }
+
+  fn class( &mut self ) -> PResult<Class> {
+    let first = self.get_current();
+
+    if !first.is_type_name() {
+      return Err( self.syntax_error( "class", "class name" ) )
+    }
+
+    let cname = Ident::from_token( &first.as_ident() );
+    let mut cargs = Vec::new();
+
+    self.next();
+
+    loop {
+      self.push_checkpoint();
+
+      match self.any_type() {
+        Ok( ty ) => cargs.push( ty ),
+        Err( _ ) => {
+          self.pop_checkpoint();
+          break
+        }
+      }
+    }
+
+    Ok( Class{ name: cname, params: cargs } )
   }
 
   fn expression( &mut self ) -> PResult<Expression> {
@@ -344,8 +400,18 @@ impl<'a> Parser<'a> {
   fn low_expr( &mut self ) -> PResult<Expression> {
     Ok( if self.get_current().is_symbol( "(" ) {
 
+      let unit_loc = self.get_current().loc();
+      
       self.next();
       
+      if self.get_current().is_symbol( ")" ) {
+        self.next();
+        return Ok( Expression::new(
+            EK::Literal( Literal::new( tokenizer::Literal::Unit
+                                     , unit_loc ) )
+            , Type::Unit ) )
+      }
+
       let expr = try!( self.expression() );
       if !self.get_current().is_symbol( ")" ) {
         return Err( self.syntax_error( "expression", "')'" ) )
@@ -491,17 +557,7 @@ impl<'a> StreamReader<&'a Token, &'a Token, ParserError> for Parser<'a> {
 impl<'a> Checkpoint for Parser<'a> {
   fn push_checkpoint( &mut self ) {
     let cur = self.get_current();
-    self.checkpoints.push( (cur, self.items) );
-  }
-
-  fn peek_checkpoint( &mut self ) {
-    match self.checkpoints.last() {
-      None => panic!( "Tried to peek a checkpoint from an empty checkpoint stack" ),
-      Some( &(c, v) ) => {
-        self.set_current( c );
-        self.items = v;
-      }
-    }
+    self.checkpoints.push( (cur, self.items.clone()) );
   }
 
   fn pop_checkpoint( &mut self ) {

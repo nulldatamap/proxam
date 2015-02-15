@@ -22,7 +22,6 @@ pub trait StreamReader<T, R, E> {
 pub trait Checkpoint {
   fn push_checkpoint( &mut self );
   fn pop_checkpoint( &mut self );
-  fn peek_checkpoint( &mut self );
   fn reset_checkpoints( &mut self );
 }
 

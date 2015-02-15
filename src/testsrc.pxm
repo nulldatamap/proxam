@@ -1,6 +1,9 @@
 
-def fib x : Int -> Int =
-  if x == 0
-  then x + 1
-  else x + 2
+def id x : Int -> Int
+  where Number Int = x
 
+; Defined in the runtime
+def print_int x : Int -> ()
+
+def main : () =
+  print_int ( id 10 )

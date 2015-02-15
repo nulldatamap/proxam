@@ -3,7 +3,7 @@ use std::mem::replace;
 
 use filemap::{CharLoc};
 use ast::{Function, Type, Expression, ExpressionKind, Ident, Name, uexpr};
-use builtin::{builtin_type, builtin_fn};
+use builtin::{BuiltinType, builtin_type, builtin_fn};
 
 // Code transformation and validation
 
@@ -29,6 +29,12 @@ pub enum TransError {
 
   UndefinedName( Name ),
   UndefinedType( Ident ),
+
+  IncosistentIfBranches( Expression ),
+  IncorrectType( Expression, Type ),
+  InvalidArgumentCount( Expression ),
+  UncallableValue( Expression ),
+
 }
 
 type TResult<T> = Result<T, TransError>;
@@ -54,7 +60,7 @@ impl Module {
     fnam.no_loc(); // Remove the source location from this name
     
     // Check if the arguments of the function match it's type
-    if fun.arg_names.len() as u32 != fun.ty.argument_count() {
+    if fun.arg_names.len() != fun.ty.argument_count() {
       return Err( TransError::InvalidArgumentList( fun ) )
     }
 
@@ -130,10 +136,13 @@ impl Module {
           if arguments.contains( &idt ) {
             *ekind = EK::Arg( idt );
           // Or if it's one of the bound names
-          } else if binds.iter()
-                         .any( |&( ref n, _ )|
-                            n.matches( scope, &idt.text[] ) ) {
-            *ekind = EK::Named( scope.ident_child( &idt ) );
+          } else if let Some( &(ref bn, _) ) = 
+                    binds.iter()
+                         .find( |&&( _, ref f )|
+                            f.name.text == idt.text ) {
+            let mut bnu = bn.clone();
+            bnu.push( idt.text.clone() );
+            *ekind = EK::Named( bnu );
           // Or a builtin function
           } else if let Some( bif ) = builtin_fn( &idt ) {
             *ekind = EK::BuiltinFn( bif );
@@ -242,11 +251,11 @@ impl Module {
         try!( self.validate_name_expr( &**els ) );
       },
       &EK::Named( ref name ) => {
-        if name.is_toplevel() {
+        let mut noloc_name = name.clone();
+        noloc_name.no_loc();
 
-          if !self.functions.keys().any( |k| k.same( name ) ) {
-            return Err( TransError::UndefinedName( name.clone() ) )
-          }
+        if !self.functions.keys().any( |k| k.same( &noloc_name ) ) {
+          return Err( TransError::UndefinedName( name.clone() ) )
         }
       },
       inv => panic!( "Name validation is not implemented for: {:?}", inv )
@@ -283,17 +292,18 @@ impl Module {
           if elms.len() == 0 {
             panic!( "Reached an application in the AST with zero length!" )
           }
-          let callee = elms.remove( 0 );
 
           for arge in elms.iter_mut() {
             try!( Module::resolve_application_expr( arge ) );
           }
 
+          let callee = elms.remove( 0 );
+
           // Match the to-be-applied value
           match callee.kind {
-            EK::BuiltinFn( bif ) =>
-              *ekind = EK::BuiltinCall( bif, elms ),
-            EK::If( .. )
+            EK::BuiltinFn( .. )
+            | EK::FnCall( .. )
+            | EK::If( .. )
             | EK::Literal( .. )
             | EK::Arg( .. )
             | EK::Named( .. ) =>
@@ -312,8 +322,9 @@ resolution: {:?}", inv )
 
   fn resolve_types( &mut self ) -> TResult<()> {
 
-    for (_, fun) in self.functions.iter_mut() {
+    for (n, fun) in self.functions.iter_mut() {
       try!( Module::resolve_type( &mut fun.ty ) );
+      fun.ty.to_fn();
     }
 
     Ok( () )
@@ -331,7 +342,8 @@ resolution: {:?}", inv )
           }
         }
       },
-      &mut Type::Unit => {},
+      &mut Type::Unit
+      | &mut Type::BuiltinType( .. ) => {},
       &mut Type::Tuple( ref mut elms ) => {
         for elm in elms.iter_mut() {
           try!( Module::resolve_type( elm ) );
@@ -347,22 +359,240 @@ resolution: {:?}", inv )
 
         try!( Module::resolve_type( &mut **ret ) );
       },
-
       inv => panic!( "Type resolution not implemented for: {:?}", inv )
     }
     Ok( () )
   }
 
+  /*
+    TODO:
+    "Abstract" function types
+    Type functions ( generics )
+    Partial application
+    Envoriment capturing
+  */
+
   fn check_types( &mut self ) -> TResult<()> {
+    // Walk through the tree nodes, check for expectations and incosistentcies
+    // Check function call arguments; partial application, no arguments
+    // and too many arguments ( and application overflow into the returned value )
+    
+    for (_, fun) in self.functions.iter_mut() {
+      if let Some( ref mut bdy ) = fun.body {
+        try!( Module::type_check_expr( bdy ) );
+        // Coerce the return expression value if needed, or fail the type check
+        let rty = if fun.ty.is_fn_type() {
+          fun.ty.return_type()
+        } else {
+          &fun.ty
+        };
+        try!( Module::coerce_expr( bdy, rty ) );
+      }
+    }
+
     Ok( () )
   }
 
-  /*
-  
-    Make `resolve_type` work on the type tree ( through tree )
-    Check the type consistency through the tree
+  fn type_check_expr( expr : &mut Expression ) -> TResult<()> {
+    // Get the type and kind seperately
+    let &mut Expression{ kind: ref mut ekind, ty: ref mut ety } = expr;
+    
+    match ekind {
+      &mut EK::If( .. ) => {
+        if let &mut EK::If( ref mut cnd, ref mut thn, ref mut els ) = ekind {
+          try!( Module::type_check_expr( &mut **cnd ) );
+          try!( Module::type_check_expr( &mut **thn ) );
+          try!( Module::type_check_expr( &mut **els ) );
 
-  */
+          // The condition must always be boolean
+          let boolty = Type::BuiltinType( BuiltinType::Bool );
+          try!( Module::coerce_expr( &mut **cnd
+                                         , &boolty ) );
+          // If the two branches don't match, try to coerce them before 
+          // we report an error
+          if thn.ty != els.ty {
+            // Because the initial type of an if-expressino is set to the type
+            // of the `then` expression, we have to remember to update it to
+            // match the new type of the `then` expression ( which now matches
+            // `else` )
+            if Module::coerce_expr( thn, &els.ty ).is_ok() {
+              *ety = thn.ty.clone();
+              return Ok( () )
+            } else if Module::coerce_expr( els, &thn.ty ).is_ok() {
+              // Nothing to do because the if expression type is already correct
+              return Ok( () )
+            }
+          }
+        }
+        let errexpr = Expression::new( replace( ekind, EK::Invalid )
+                                     , ety.clone() );
+        return Err( TransError::IncosistentIfBranches( errexpr ) )
+      },
+      &mut EK::Literal( .. )
+      | &mut EK::Arg( .. )
+      | &mut EK::Named( .. )
+      | &mut EK::BuiltinFn( .. ) => {}, // Skip
+      &mut EK::FnCall( ref mut callee, ref mut args ) => {
+        // Type checl the args and callee
+        try!( Module::type_check_expr( callee ) );
+        for arg in args.iter_mut() {
+          try!( Module::type_check_expr( arg ) );
+        }
+
+        if !callee.ty.is_fn_type() {
+          // Just a bug test
+          if args.len() == 0 {
+            panic!( "Found a non-function call with zero arguments! {:?}"
+                  , callee )
+          }
+          // Report an error, we can't call a non-function value
+          let errexpr = Expression::new( EK::FnCall( callee.clone()
+                                                   , args.clone() )
+                                       , ety.clone() );
+          return Err( TransError::UncallableValue( errexpr ) )
+        }
+        // Check for partial application
+        if callee.ty.argument_count() > args.len() {
+          panic!( "Partial application is not implemented: {:?}", callee )
+        }
+        // Check for over-application
+        if callee.ty.argument_count() < args.len() {
+          // If the current function returns a function, we assume it's
+          // over application
+          if callee.ty.return_type().is_fn_type() {
+            panic!( "Over application is not implemented: {:?}", callee )
+          // Otherwise we assue that there's just too many arguments
+          } else {
+            let errexpr = Expression::new( EK::FnCall( callee.clone()
+                                                     , args.clone() )
+                                         , ety.clone() );
+            return Err( TransError::InvalidArgumentCount( errexpr ) )
+          }
+        }
+
+        for (i, arg) in args.iter_mut().enumerate() {
+          try!( Module::coerce_expr( arg, callee.ty.argument_type( i ) ) );
+        }
+
+      },
+      inv => panic!( "Type checking is not implemented for: {:?}", inv )
+    }
+
+    Ok( () )
+  }
+
+  fn coerce_expr( expr : &mut Expression, ty : &Type ) -> TResult<()> {
+    // There can be multiple layers of coercion, so we'll keep looping
+    loop {
+      // Just return early then
+      if &expr.ty == ty {
+        return Ok( () )
+      }
+
+      // If we can get the right type by calling the function
+      if expr.ty.is_call_coercible( ty ) {
+        let innerkind = replace( &mut expr.kind, EK::Invalid );
+        // Turn it into the right function call
+        expr.kind = {
+          let innerexpr = Expression::new( innerkind, expr.ty.clone() );
+          // Or just a normal function call otherwise
+          EK::FnCall( Box::new( innerexpr ), Vec::new() )
+        };
+        let t = replace( &mut expr.ty, Type::Untyped );
+        if let Type::Fn( _, ret ) = t {
+          expr.ty = *ret;
+        } else {
+          panic!( "Got unexpected type while coercing: {:?}", t )
+        }
+      // We're out of options, the types just don't match
+      } else {
+        // So let's just report the error
+        // We take the expression out of tree since it's not needed in it, and
+        // we need the expression by value
+        let errexpr = replace( expr, uexpr( EK::Invalid ) );
+
+        return Err( TransError::IncorrectType( errexpr, ty.clone() ) )
+      }
+    }
+
+    Ok( () )
+  }
+
+  fn type_annotate( &mut self ) -> TResult<()> {
+
+    let mut typemap : HashMap<Name, Type> =
+      self.functions.iter()
+                    .map( |(k, v)| (k.clone(), v.ty.clone()) )
+                    .collect();
+
+    for (_, fun) in self.functions.iter_mut() {
+      if let Some( ref mut bdy ) = fun.body {
+        try!( Module::type_annotate_expr( bdy, &fun.arg_names[]
+                                        , &fun.ty, &mut typemap ) );
+      }
+    }
+
+    Ok( () )
+  }
+
+  // Walks through the tree and annotate the expr.ty for the
+  // type checker to validate later down the pipeline.
+  fn type_annotate_expr( expr : &mut Expression
+                       , args : &[Ident]
+                       , fty  : &Type
+                       , typemap : &mut HashMap<Name, Type> ) -> TResult<()> {
+    let &mut Expression{ kind: ref mut ekind, ty: ref mut ety  } = expr;
+
+    match ekind {
+      &mut EK::If( ref mut cnd, ref mut thn, ref mut els ) => {
+        // Annotate all the sub-expressions
+        try!( Module::type_annotate_expr( &mut **cnd, args, fty, typemap ) );
+        try!( Module::type_annotate_expr( &mut **thn, args, fty, typemap ) );
+        try!( Module::type_annotate_expr( &mut **els, args, fty, typemap ) );
+
+        // A if-expresionn takes the type of it's branches
+        // Branch type consistency will be checked later
+        // so for now we'll just assume that they both
+        // have the same type.
+        *ety = thn.ty.clone();
+      },
+      &mut EK::Literal( .. ) => {},
+      &mut EK::Arg( ref idt ) => {
+        let idx = args.iter().position( |v| v.text == idt.text )
+                             .expect( "Encountered non-existant arg." );
+        *ety = fty.argument_type( idx ).clone();
+      },
+      &mut EK::Named( ref mut fnam_spot ) => {
+        // Swap out the Name so we can own it for a little
+        let mut fnam = replace( fnam_spot, Name::root() );
+        // Swap out the location temporarely so we can get a source-position
+        // independant hash of the name.
+        let fnloc = replace( &mut fnam.loc, None );
+        *ety = typemap.get( &fnam ).expect( "Encountered non-existant fn." )
+                                  .clone();
+        // Then restore it for possible later use
+        fnam.loc = fnloc;
+        // And swap the name back into the tree
+        let _ = replace( fnam_spot, fnam );
+      },
+      &mut EK::BuiltinFn( ref bif ) => {
+        *ety = bif.get_type();
+      },
+      &mut EK::FnCall( ref mut f, ref mut fargs ) => {
+        for arg in fargs.iter_mut() {
+          try!( Module::type_annotate_expr( arg, args, fty, typemap ) );
+        }
+
+        try!( Module::type_annotate_expr( &mut **f, args, fty, typemap ) );
+
+        *ety = f.ty.return_type()
+                   .clone();
+      }
+      inv => panic!( "Type annotation is not implemented for: {:?}", inv )
+    }
+
+    Ok( () )
+  }
 
 }
 
@@ -378,6 +608,7 @@ pub fn validate_module( name : String, fns : Vec<Function> )
   try!( module.validate_names() );
   try!( module.resolve_applications() );
   try!( module.resolve_types() );
+  try!( module.type_annotate() );
   try!( module.check_types() );
   
   Ok( module )

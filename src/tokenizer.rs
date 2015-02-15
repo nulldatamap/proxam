@@ -7,7 +7,8 @@ use filemap::{CharLoc, CharOffset, Loc};
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Literal {
   Integer( i64 ),
-  Boolean( bool )
+  Boolean( bool ),
+  Unit
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -178,7 +179,7 @@ fn is_digit_char( chr : char ) -> bool {
 
 fn is_keyword( s : &str ) -> bool {
   match s {
-    "if" | "let" | "then" | "else" | "in" | "def" => true,
+    "if" | "let" | "then" | "else" | "in" | "def" | "where" => true,
     _ => false
   }
 }
@@ -382,6 +383,7 @@ impl<'a> Tokenizer<'a> {
     } );
 
     let ival = FromStr::from_str( &intstr[] )
+                       .ok()
                        .expect( "Failed to read integer token" );
     Ok( Some( Token::new( TokenKind::Literal( Literal::Integer( ival ) )
                         , start_loc ) ) )
@@ -461,17 +463,6 @@ impl<'a> Checkpoint for Tokenizer<'a> {
         self.chars = v;
       },
       None => panic!( "Tried to pop a checkpoint from empty stack" )
-    }
-  }
-
-  fn peek_checkpoint( &mut self ) {
-    match self.checkpoints.last() {
-      Some( &(c, l, ref v) ) => {
-        self.current_chr = c;
-        self.current_loc = l;
-        self.chars = v.clone();
-      },
-      None => panic!( "Tried to peek a checkpoint from empty stack" )
     }
   }
 

@@ -1,4 +1,5 @@
 use std::mem::replace;
+use std::fmt;
 
 use filemap::{CharLoc, Loc};
 use tokenizer;
@@ -7,13 +8,20 @@ use builtin::{BuiltinType, BuiltinFn};
 
 type TLiteral = tokenizer::Literal;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Type {
   NamedType( Ident ),
   Unit,
   Tuple( Vec<Type> ),
   List( Box<Type> ),
   Fn( Vec<Type>, Box<Type> ),
+  // A generic type parameter with possible constraints
+  Generic( Ident, Vec<Ident> ),
+  // A generic function type which bare functions, partially applied functions
+  // and closures can be coerced to 
+  AbstractFn( Vec<Type>, Box<Type> ),
+  // A closure type which both has it's environment values and arguments
+  Closure( Vec<Type>, Vec<Type>, Box<Type> ),
   // Only appears after types have been resolved
   BuiltinType( BuiltinType ),
   // An application type, a type representing a partially
@@ -23,44 +31,119 @@ pub enum Type {
   // taking the arguments the partial application is missing.
   // Application( Int, Int -> Bool 1 ) =~= Int -> Bool
   Application( Box<Type>, u32 ),
-  // Should never appear in a finished AST, it's only a placeholder
+  // Should never appear in a finished AST, it's only a place-holder
   // for expression who haven't gotten their type resolved yet
   Untyped
 }
 
-impl Type {
-  pub fn argument_count( &self ) -> u32 {
+impl fmt::Debug for Type {
+  fn fmt( &self, f : &mut fmt::Formatter ) -> Result<(), fmt::Error> {
     match self {
-      &Type::Fn( ref args, _ ) => args.len() as u32,
-      _ => 0
-    }
-  }
-
-  // Converts a NON-FUNCTION type to a function type
-  pub fn to_fn( self ) -> Type {
-    match self {
-      f @ Type::Fn( .. ) => return f,
-      v => Type::Fn( Vec::new(), Box::new( v ) )
+      &Type::NamedType( ref n ) => write!( f, "<{}>", n.text ),
+      &Type::Unit => write!( f, "()" ),
+      &Type::Tuple( ref els ) => {
+        write!( f, "(" );
+        for el in els { 
+          write!( f, "{:?}, ", el );
+        }
+        write!( f, ")" )
+      },
+      &Type::List( ref t ) => write!( f, "[{:?}]", t ),
+      &Type::Fn( ref args, ref r ) => {
+        for el in args { 
+          write!( f, "{:?}, ", el );
+        }
+        write!( f, "-> {:?}", r )
+      },
+      &Type::BuiltinType( ref bit ) => write!( f, "{:?}", bit ),
+      _ => write!( f, "<WUT_TYPE>" )
     }
   }
 }
 
-#[derive(Debug)]
+impl Type {
+  pub fn argument_count( &self ) -> usize {
+    match self {
+      &Type::Fn( ref args, _ ) => args.len(),
+      _ => 0
+    }
+  }
+
+  pub fn argument_type( &self, idx : usize ) -> &Type {
+    match self {
+      &Type::Fn( ref args, _ ) => {
+        assert!( idx < args.len() );
+        &args[idx]
+      },
+      _ => panic!( "{:?} is not a function type.", self )
+    }
+  }
+
+  pub fn return_type( &self ) -> &Type {
+    match self {
+      &Type::Fn( _, ref ret ) => {
+        &**ret
+      },
+      _ => panic!( "{:?} is not a function type.", self )
+    }
+  }
+
+  // Converts a NON-FUNCTION type to a function type
+  pub fn to_fn( &mut self ) {
+    let t = replace( self, Type::Untyped );
+    *self = match t {
+      Type::Fn( .. ) => t,
+      _ => Type::Fn( Vec::new(), Box::new( t ) )
+    };
+  }
+
+  pub fn is_call_coercible( &self, ty : &Type ) -> bool {
+    match self {
+      &Type::Fn( .. ) => {
+        // The function must have no argumens, and the return type must be the 
+        // same as the output type or coercible to the output type
+        self.argument_count() == 0
+        && ( self.return_type() == ty || self.return_type()
+                                             .is_call_coercible( ty ) )
+      },
+      _ => false
+    }
+  }
+
+  pub fn is_fn_type( &self ) -> bool {
+    match self {
+      &Type::Fn( .. ) => true,
+      _ => false
+    }
+  }
+  
+}
+
+#[derive(Debug, Clone)]
+pub struct Class {
+  pub name : Ident,
+  pub params : Vec<Type>
+}
+
+#[derive(Debug, Clone)]
 pub struct Function {
   pub name : Ident,
   pub ty   : Type,
   pub arg_names : Vec<Ident>,
   pub body : Option<Expression>,
+  pub constraints : Vec<Class>
 }
 
 impl Function {
   pub fn new( name : Ident, arg_names : Vec<Ident>, ty : Type
-            , body : Option<Expression> ) -> Function {
+            , body : Option<Expression>, constraints : Vec<Class> )
+      -> Function {
     
     Function { name: name
              , ty : ty
              , arg_names: arg_names
-             , body: body }
+             , body: body
+             , constraints: constraints }
   }
 }
 
@@ -146,9 +229,17 @@ impl Name {
     self.name == other.name
   }
 
+  pub fn top_name( &self ) -> &String {
+    self.name.last().expect( "A non-empty Name" )
+  }
+
+  pub fn top_name_matches( &self, n : &str ) -> bool {
+    &self.top_name()[] == n
+  }
+
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExpressionKind {
   Let( Vec<Function>, Box<Expression> ),
   UnresolvedNamed( Ident ),
@@ -161,15 +252,15 @@ pub enum ExpressionKind {
   Named( Name ),
   BuiltinFn( BuiltinFn ),
   // The call nodes are transformed from Apply
-  BuiltinCall( BuiltinFn, Vec<Expression> ),
   FnCall( Box<Expression>, Vec<Expression> ),
   // PartialApplication
   // PartialFinsiher
+  // Appears after type checking
   // Should never appear in a fully built expression
   Invalid
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Expression {
   pub kind : ExpressionKind,
   pub ty   : Type
@@ -186,13 +277,17 @@ pub fn uexpr( ek : ExpressionKind ) -> Expression {
   Expression { kind: ek, ty: Type::Untyped }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Literal {
   pub lit : TLiteral,
   pub loc : CharLoc
 }
 
 impl Literal {
+  pub fn new( lit : TLiteral, loc : CharLoc ) -> Literal {
+    Literal{ lit: lit, loc: loc }
+  }
+
   pub fn from_token( tk : &Token ) -> Literal {
     if !tk.is_literal() {
       panic!( "Tried to create an literal from a non-literal token!" )
@@ -206,7 +301,9 @@ impl Literal {
       &tokenizer::Literal::Integer( .. ) => 
         Type::BuiltinType( BuiltinType::Int ),
       &tokenizer::Literal::Boolean( .. ) => 
-        Type::BuiltinType( BuiltinType::Bool )
+        Type::BuiltinType( BuiltinType::Bool ),
+      &tokenizer::Literal::Unit =>
+        Type::Unit,
     }
   }
 
