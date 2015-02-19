@@ -1,4 +1,4 @@
-#![feature(unsafe_destructor)]
+#![feature(box_patterns)]
 
 #[macro_use]
 extern crate version;
@@ -15,6 +15,8 @@ mod streamreader;
 mod tokenizer;
 mod parser;
 mod ast;
+mod visitor;
+mod folder;
 mod trans;
 mod builtin;
 mod codegen;

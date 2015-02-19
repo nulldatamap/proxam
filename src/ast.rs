@@ -2,6 +2,7 @@ use std::mem::replace;
 use std::fmt;
 
 use filemap::{CharLoc, Loc};
+use visitor::Visitor;
 use tokenizer;
 use tokenizer::{Token, TokenKind};
 use builtin::{BuiltinType, BuiltinFn};
@@ -116,8 +117,34 @@ impl Type {
       _ => false
     }
   }
+
+  pub fn is_generic( &self ) -> bool {
+    let mut itg = IsTypeGeneric{ answer: false };
+    itg.visit_ty( self );
+    itg.answer
+  }
   
 }
+
+struct IsTypeGeneric {
+  answer : bool,
+}
+
+impl<'a> Visitor<'a> for IsTypeGeneric {
+
+  fn visit_ty_generic( &mut self, v : (&'a Ident, &'a [Ident]) ) {
+
+    self.answer = true;
+  }
+
+  // We keep folding until we either have reached each node or 
+  // until we get a positive answer
+  fn is_done_visiting( &mut self ) -> bool {
+    self.answer
+  }
+
+}
+
 
 #[derive(Debug, Clone)]
 pub struct Class {
