@@ -23,8 +23,9 @@ FLOAT := DIGIT "." DIGIT?
 
 ## Syntax:
 ```antlr
-module := def*
-def := "def" function
+module := item*
+item := fn_def | type_def | data_def
+fn_def := "def" function
 function := ident (ident)* ":" type where? ("=" expression)?
 type := function_type
 function_type := _type ("," _type)* "->" type
@@ -37,10 +38,12 @@ expression := appl_expr
 appl_expr := op_expr n (op_expr n)*
 op_expr (x <- 0..(n - 1)) := op_expr (x + 1) <op:SYMBOL x> op_expr (x + 1)
 op_expr n := low_expr <op 0> low_expr
-low_expr = "(" expression ")" | if_expr | let_expr | IDENT | literal
-if_expr = "if" expression "then" expression "else" expression
-let_expr = "let" function ("," function)* "in" expression
-literal = INTEGER
+low_expr := "(" expression ")" | if_expr | let_expr | IDENT | literal
+if_expr := "if" expression "then" expression "else" expression
+let_expr := "let" function ("," function)* "in" expression
+literal := INTEGER
+type_def := "type" TYPE_NAME "=" type
+data_def := "data" TYPE_NAME "=" IDENT ":" type ("," IDENT ":" type)*
 ```
 
 `op_expr x` referring to the infix operator(s) with a precedence of `x`.
