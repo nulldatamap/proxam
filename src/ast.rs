@@ -312,6 +312,25 @@ pub fn uexpr( ek : ExpressionKind ) -> Expression {
   Expression { kind: ek, ty: Type::Untyped }
 }
 
+#[derive(Debug)]
+pub struct TypeDefinition {
+  pub name : Ident,
+  pub base : Type
+}
+
+impl TypeDefinition {
+  pub fn new( name : Ident, base : Type ) -> TypeDefinition {
+    TypeDefinition { name: name, base: base }
+  }
+}
+
+#[derive(Debug)]
+pub enum Item {
+  Fn( Function ),
+  Type( TypeDefinition ),
+  // Data( DataDefinition )
+}
+
 #[derive(Debug, Clone)]
 pub struct Literal {
   pub lit : TLiteral,

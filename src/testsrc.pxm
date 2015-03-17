@@ -1,4 +1,7 @@
 
+; Yay the syntax is getting parsed correctly!
+type Years = Int
+
 def id x : Int -> Int = x
 
 ; Defined in the runtime

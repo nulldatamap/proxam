@@ -6,7 +6,7 @@ use streamreader::{StreamReader, Checkpoint};
 use tokenizer::{Token, TokenKind};
 use tokenizer; 
 use ast::{Function, Ident, Type, Expression, ExpressionKind, Literal, uexpr
-         , Class};
+         , Class, TypeDefinition, Item};
 
 // TODO: Fix identation
 
@@ -63,26 +63,35 @@ impl<'a> Parser<'a> {
   }
 
   pub fn parse( name : &'a str, src : &'a str, tokens : &'a[Token] )
-     -> PResult<Vec<Function>> {
+     -> PResult<Vec<Item>> {
     let mut parser = Parser::new( name, src, tokens );
     parser.start()
   }
 
-  fn start( &mut self ) -> PResult<Vec<Function>> {
+  fn start( &mut self ) -> PResult<Vec<Item>> {
     // Load up the fist token from the stream
     self.next();
 
-    let mut fns = Vec::new();
+    let mut items = Vec::new();
 
     while !self.reached_end() {
       self.reset_checkpoints();
-      fns.push( try!( self.def() ) );
+      items.push( try!( self.item() ) );
     }
     
-    Ok( fns )
+    Ok( items )
   }
 
-  fn def( &mut self ) -> PResult<Function> {
+  fn item( &mut self ) -> PResult<Item> {
+    if let Ok( fun ) = self.fn_def() {
+      Ok( Item::Fn( fun ) )
+    } else {
+      // This may fail, since anything else is invalid syntax
+      Ok( Item::Type( try!( self.type_def() ) ) )  
+    }
+  }
+
+  fn fn_def( &mut self ) -> PResult<Function> {
 
     if !self.get_current().is_keyword( "def" ) {
       return Err( self.syntax_error( "function", "'def'" ) )
@@ -506,13 +515,40 @@ impl<'a> Parser<'a> {
     }
 
     if !self.get_current().is_keyword( "in" ) {
-      return Err( self.syntax_error( "let expression", "'in'" ) );
+      return Err( self.syntax_error( "let expression", "'in'" ) )
     }
     self.next();
 
     let expr = try!( self.expression() );
 
     Ok( Some( uexpr( EK::Let( let_items, Box::new( expr ) ) ) ) )
+  }
+
+  fn type_def( &mut self ) -> PResult<TypeDefinition> {
+
+    if !self.get_current().is_keyword( "type" ) {
+      return Err( self.syntax_error( "type definition", "'type'" ) )
+    }
+
+    self.next();
+
+    if !self.get_current().is_type_name() {
+      return Err( self.syntax_error( "type definition", "type name" ) )
+    }
+
+    let name = Ident::from_token( &self.get_current().as_ident() );
+
+    self.next();
+
+    if !self.get_current().is_symbol( "=" ) {
+      return Err( self.syntax_error( "type definition", "'='" ) ) 
+    }
+
+    self.next();
+
+    let base = try!( self.any_type() );
+
+    Ok( TypeDefinition::new( name, base ) )
   }
 
   fn syntax_error( &mut self, whre : &'static str, wht : &'static str )

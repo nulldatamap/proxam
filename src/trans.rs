@@ -1,7 +1,7 @@
 use std::collections::hash_map::{HashMap, Entry, Keys};
 use std::mem::replace;
 
-use ast::{Function, Type, Expression, Ident, Name, uexpr};
+use ast::{Function, Type, Expression, Ident, Name, uexpr, Item, TypeDefinition};
 use builtin::{BuiltinType, BuiltinFn, builtin_type, builtin_fn};
 use folder::{self, Folder};
 use visitor::Visitor;
@@ -43,12 +43,13 @@ type TResult<T> = Result<T, TransError>;
 pub struct Module {
   pub name      : String,
   pub functions : HashMap<Name, Function>,
+  pub types     : HashMap<Name, TypeDefinition>
   // data structures
 }
 
 impl Module {
   fn new( name : String ) -> Module {
-    Module{ name: name, functions: HashMap::new() }
+    Module{ name: name, functions: HashMap::new(), types: HashMap::new() }
   }
 
   fn insert_toplevel_fn( &mut self, fun : Function ) -> TResult<()> {
@@ -159,7 +160,7 @@ impl Module {
       },
       &mut EK::Literal( .. ) => {},
       &mut EK::If( ref mut cnd, ref mut thn, ref mut els ) => {
-        // Enter the if conditon scope
+        // Enter the if condition scope
         scope.push( "if".to_string() );
         try!( Module::resolve_namespace_expr( &mut **cnd
                                             , arguments
@@ -369,11 +370,11 @@ resolution: {:?}", inv )
     "Abstract" function types
     Type functions ( generics )
     Partial application
-    Envoriment capturing
+    Environment capturing
   */
 
   fn check_types( &mut self ) -> TResult<()> {
-    // Walk through the tree nodes, check for expectations and incosistentcies
+    // Walk through the tree nodes, check for expectations and inconsistencies
     // Check function call arguments; partial application, no arguments
     // and too many arguments ( and application overflow into the returned value )
     
@@ -413,7 +414,7 @@ resolution: {:?}", inv )
           // If the two branches don't match, try to coerce them before 
           // we report an error
           if thn.ty != els.ty {
-            // Because the initial type of an if-expressino is set to the type
+            // Because the initial type of an if-expression is set to the type
             // of the `then` expression, we have to remember to update it to
             // match the new type of the `then` expression ( which now matches
             // `else` )
@@ -566,7 +567,7 @@ resolution: {:?}", inv )
         } else {
           panic!( "Got unexpected type while coercing: {:?}", t )
         }
-        
+
       // We're out of options, the types just don't match
       } else {
         // So let's just report the error
@@ -693,12 +694,15 @@ impl TypeAnnotator {
   }
 }
 
-pub fn validate_module( name : String, fns : Vec<Function> )
+pub fn validate_module( name : String, items : Vec<Item> )
        -> TResult<Module> {
   let mut module = Module::new( name );
   
-  for fun in fns.into_iter() {
-    try!( module.insert_toplevel_fn( fun ) );
+  for item in items.into_iter() {
+    match item {
+      Item::Fn( fun ) => try!( module.insert_toplevel_fn( fun ) ),
+      Item::Type( ty ) => println!( "Discarded type definition: {:?}", ty )
+    }
   }
 
   try!( module.resolve_namespaces() );

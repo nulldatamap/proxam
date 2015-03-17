@@ -179,7 +179,7 @@ fn is_digit_char( chr : char ) -> bool {
 
 fn is_keyword( s : &str ) -> bool {
   match s {
-    "if" | "let" | "then" | "else" | "in" | "def" | "where" => true,
+    "if" | "let" | "then" | "else" | "in" | "def" | "where" | "type" => true,
     _ => false
   }
 }
