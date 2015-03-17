@@ -50,7 +50,7 @@ impl Codegen {
     unsafe {
       let ctx = llvm::LLVMContextCreate();
 
-      let c_name = CString::from_slice( module.name.as_bytes() );
+      let c_name = CString::new( module.name.as_bytes() ).unwrap();
       let llmodule = llvm::LLVMModuleCreateWithNameInContext( c_name.as_ptr()
                                                             , ctx );
       
@@ -88,7 +88,7 @@ impl Codegen {
 
     unsafe {
       let ftype = self.get_bare_type( &fnty );
-      let cname = CString::from_slice( fname.as_bytes() );
+      let cname = CString::new( fname.as_bytes() ).unwrap();
       let f = llvm::LLVMGetOrInsertFunction( self.module
                                            , cname.as_ptr()
                                            , ftype );
@@ -97,7 +97,7 @@ impl Codegen {
       self.functions.insert( fname, f );
 
       for (arg, i) in fnargs.iter().zip( range( 0, fnargs.len() ) ) {
-        let carg = CString::from_slice( arg.text.as_bytes() );
+        let carg = CString::new( arg.text.as_bytes() ).unwrap();
         let prm = llvm::get_param( f, i as u32 );
 
         llvm::LLVMSetValueName( prm, carg.as_ptr() );
@@ -121,7 +121,7 @@ impl Codegen {
       llvm::LLVMPositionBuilderAtEnd( self.builder, entry );
 
       llvm::LLVMBuildRet( self.builder
-                        , self.get_expression_value( llfn, &args[]
+                        , self.get_expression_value( llfn, &args
                                                    , body ) );
     }
   }
@@ -149,9 +149,9 @@ impl Codegen {
   fn get_type( &mut self, ty : &Type ) -> TypeRef {
     match ty {
       &Type::BuiltinType( ref bit ) => bit.as_llvm_type( self.context ),
-      &Type::Tuple( ref el ) => self.get_tuple_type( &el[] ),
+      &Type::Tuple( ref el ) => self.get_tuple_type( &el ),
       &Type::Unit => self.get_unit_type(),
-      &Type::Fn( ref args, ref ret ) => self.get_fn_type( &args[], &**ret ),
+      &Type::Fn( ref args, ref ret ) => self.get_fn_type( &args, &**ret ),
       n => panic!( "Reached unresolved type in codegen: {:?}", n )
     }
   }
@@ -164,7 +164,7 @@ impl Codegen {
 
   fn get_bare_type( &mut self, ty : &Type ) -> TypeRef {
     match ty {
-      &Type::Fn( ref args, ref ret ) => self.get_bare_fn_type( &args[], &**ret ),
+      &Type::Fn( ref args, ref ret ) => self.get_bare_fn_type( &args, &**ret ),
       v => self.get_type( v )
     }
   }
@@ -201,9 +201,7 @@ impl Codegen {
   fn get_argument_value( &mut self, fun : ValueRef, args : &[Ident]
                        , name : Ident ) -> ValueRef {
     let i = args.position_elem( &name ).expect( "Invalid argument in codegen." );
-    unsafe {
-      llvm::get_param( fun, i as u32 )
-    }
+    llvm::get_param( fun, i as u32 )
   }
 
   fn get_if_value( &mut self, fun : ValueRef, args : &[Ident]
@@ -265,7 +263,7 @@ impl Codegen {
            .collect();
     unsafe {
       if let EK::BuiltinFn( bif ) = calledfn.kind {
-        return bif.as_llvm_value( self.builder, &fargsvs[] )
+        return bif.as_llvm_value( self.builder, &fargsvs )
       }
       llvm::LLVMBuildCall( self.builder, self.get_expression_value( fun, args
                                                                   , calledfn )

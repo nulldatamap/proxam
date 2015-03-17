@@ -6,15 +6,15 @@ More documentation will come later since this is far from finished.
 Check `spec.md` for the current specification I'm aiming to implement.
 
 # Status
-Currently the following is implemented:
+Currently the following features are implemented:
 * Function definitions & declarations
 * Type system
 * Arithmetic operation
-* Function calls ( currently neither partial- or over-application is implemented ) 
+* Function calls ( current partial application is not implemented ) 
 * If-expressions
 * Let-binding
 
-I'm currently working on getting type parameters implement ( generics ) and traits. Which will make compile-time partially applied function passing and closures possible using generics. The type system is bare bones currently since I'm working on language semantics and not completeness. 
+I'm currently working on getting type parameters implement ( generics ) and traits. Which will make compile-time partially applied function passing and closures possible using generics. The type system is bare bones ( There's only a few usable types in the language, though it can easily support more ) currently since I'm working on language semantics and not completeness. 
 
 Currently correct LLVM-IR is being generated, but optimization passes and native code generation is yet to be moved inside the compiler. 
 

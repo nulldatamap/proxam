@@ -1,12 +1,17 @@
 use ast::{Type, Expression, ExpressionKind, Class, Name
          , Ident, Function, Literal, uexpr};
 use builtin::{BuiltinType, BuiltinFn};
+use trans::Module;
 
 mod EK {
   pub use ast::ExpressionKind::*;
 }
 
 pub trait Visitor<'a> : Sized {
+  fn visit_module( &mut self, v : &'a Module ) {
+    if self.is_done_visiting() { return }
+    walk_module( v, self );
+  }
 
   fn visit_fn( &mut self, v : &'a Function ) {
     if self.is_done_visiting() { return }
@@ -160,15 +165,28 @@ pub trait Visitor<'a> : Sized {
 
 }
 
+pub fn walk_module<'a, V : Visitor<'a>>( v : &'a Module, visitor : &mut V ) {
+  for f in v.functions.values() {
+    visitor.visit_fn( f );
+  }
+}
+
 
 pub fn walk_fn<'a, V : Visitor<'a>>( v : &'a Function, visitor : &mut V ) {
   visitor.visit_ident( &v.name );
   visitor.visit_ty( &v.ty );
-  v.arg_names.iter().map( |arg| visitor.visit_ident( arg ) );
+
+  for arg in v.arg_names.iter() {
+    visitor.visit_ident( arg )
+  }
+
   if let Some( ref bdy ) = v.body {
     visitor.visit_expr( bdy );
   }
-  v.constraints.iter().map( |cls| visitor.visit_class( cls ) );
+
+  for cls in v.constraints.iter() {
+    visitor.visit_class( cls )
+  }
 }
 
 pub fn walk_ty<'a, V : Visitor<'a>>( v : &'a Type, visitor : &mut V ) {
@@ -188,16 +206,18 @@ pub fn walk_ty<'a, V : Visitor<'a>>( v : &'a Type, visitor : &mut V ) {
 }
 
 pub fn walk_tys<'a, V : Visitor<'a>>( v : &'a [Type], visitor : &mut V ) {
-  v.iter().map( |elm| visitor.visit_ty( elm ) );
+  for elm in v {
+    visitor.visit_ty( elm )
+  }
 }
 
 pub fn walk_ty_named_type<'a, V : Visitor<'a>>( v : &'a Ident, visitor : &mut V ) {
-  visitor.visit_ty_named_type( v )
+  visitor.visit_ident( v )
 }
 
 
 pub fn walk_ty_tuple<'a, V : Visitor<'a>>( v : &'a [Type], visitor : &mut V ) {
-  visitor.visit_ty_tuple( v )
+  visitor.visit_tys( v )
 }
 
 pub fn walk_ty_list<'a, V : Visitor<'a>>( v : &'a Type, visitor : &mut V ) {
@@ -211,7 +231,9 @@ pub fn walk_ty_fn<'a, V : Visitor<'a>>( (ar, re) : (&'a [Type], &'a Type), visit
 
 pub fn walk_ty_generic<'a, V : Visitor<'a>>( (c, p) : (&'a Ident, &'a [Ident]), visitor : &mut V ) {
   visitor.visit_ident( c );
-  p.iter().map( |prm| visitor.visit_ident( prm ) );
+  for prm in p {
+    visitor.visit_ident( prm )
+  }
 }
 
 pub fn walk_ty_abstract_fn<'a, V : Visitor<'a>>( (ar, re) : (&'a [Type], &'a Type), visitor : &mut V ) {
@@ -241,7 +263,9 @@ pub fn walk_expr<'a, V : Visitor<'a>>( v : &'a Expression, visitor : &mut V ) {
 }
 
 pub fn walk_exprs<'a, V : Visitor<'a>>( v : &'a [Expression], visitor : &mut V ) {
-  v.iter().map( |elm| visitor.visit_expr( elm ) );
+  for elm in v {
+    visitor.visit_expr( elm )
+  }
 }
 
 pub fn walk_expr_kind<'a, V : Visitor<'a>>( v : &'a ExpressionKind, visitor : &mut V ) {
@@ -260,7 +284,9 @@ pub fn walk_expr_kind<'a, V : Visitor<'a>>( v : &'a ExpressionKind, visitor : &m
 }
 
 pub fn walk_expr_kind_let<'a, V : Visitor<'a>>( (fs, ex) : (&'a [Function], &'a Expression), visitor : &mut V ) {
-  fs.iter().map( |f| visitor.visit_fn( f ) );
+  for f in fs {
+    visitor.visit_fn( f )
+  }
   visitor.visit_expr( ex );
 }
 

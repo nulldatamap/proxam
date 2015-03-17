@@ -22,7 +22,7 @@ impl BuiltinType {
 }
 
 pub fn builtin_type( tn : &Ident ) -> Option<BuiltinType> {
-  Some( match &tn.text[] {
+  Some( match tn.text.as_slice() {
     "Int" => BuiltinType::Int,
     "Bool" => BuiltinType::Bool,
     _ => return None
@@ -79,7 +79,7 @@ impl BuiltinFn {
 }
 
 pub fn builtin_fn( name : &Ident ) -> Option<BuiltinFn> {
-  Some( match &name.text[] {
+  Some( match name.text.as_slice() {
     "+" => BuiltinFn::Add,
     "-" => BuiltinFn::Sub,
     "/" => BuiltinFn::Div,

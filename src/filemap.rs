@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::collections::hash_map::Entry;
 use std::error::FromError;
-use std::old_io::IoError;
-use std::old_io::fs::File;
+use std::path::{PathBuf, Path};
+use std::io::Error as IoError;
+use std::io::Read;
+use std::fs::File;
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
 pub struct CharLoc( pub u32 );
@@ -57,7 +57,7 @@ fn read_lines_char_count( src : &str ) -> Vec<(u32, u32)> {
 }
 
 struct FilemapEntry {
-  path : Option<Path>,
+  path : Option<PathBuf>,
   name : String,
   source : String,
   lines : Vec<(u32, u32)>,
@@ -66,7 +66,7 @@ struct FilemapEntry {
 }
 
 impl FilemapEntry {
-  fn new( name : String, path : Option<Path>, source : String
+  fn new( name : String, path : Option<PathBuf>, source : String
         , start_loc : CharLoc ) -> FilemapEntry {
     let lines = read_lines_char_count( source.as_slice() );
     FilemapEntry { path     : path
@@ -79,7 +79,10 @@ impl FilemapEntry {
 
   fn as_descriptor<'a>( &'a self, off : CharOffset ) -> LocDescriptor<'a> {
     let (line, pos) = self.get_line_pos( off );
-    LocDescriptor { path  : self.path.as_ref()
+    LocDescriptor { path  : self.path.as_ref().map( |v| {
+                        let r : &Path = &v;
+                        r
+                      } )
                   , name  : self.name.as_slice()
                   , source: self.source.as_slice()
                   , line  : line
@@ -145,10 +148,11 @@ impl Filemap {
     Ok( r )
   }
 
-  pub fn add_from_file( &mut self, name : String, path : Path )
+  pub fn add_from_file( &mut self, name : String, path : PathBuf )
      -> Result<CharLoc, FileMapError> {
     let mut file = try!( File::open( &path ) );
-    let source = try!( file.read_to_string() );
+    let mut source = String::new();
+    let _ = try!( file.read_to_string( &mut source ) );
     let fme = FilemapEntry::new( name, Some( path ), source, self.high_bound );
 
     self.high_bound = self.high_bound.offset_by( fme.end_loc );

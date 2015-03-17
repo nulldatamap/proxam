@@ -1,9 +1,20 @@
 
-def id x : Int -> Int
-  where Number Int = x
+def id x : Int -> Int = x
 
 ; Defined in the runtime
 def print_int x : Int -> ()
 
+; A function that returns a function
+def wowser x y : Int, Int -> Int = 
+  0
+
+def super_wowser x : Int -> ( Int, Int -> Int ) = 
+  wowser
+
+def test_overapplication : Int = 
+  wowser 0 3 ; Should compile and return 3
+             ; It should be treated as: 
+             ;   (wowser 0) 3
+
 def main : () =
-  print_int ( id 10 )
+  print_int ( super_wowser 1 0 0  )

@@ -69,14 +69,14 @@ impl Token {
 
   pub fn is_symbol( &self, sym : &str ) -> bool {
     match self.kind {
-      TokenKind::Symbol( ref s ) => &s[] == sym,
+      TokenKind::Symbol( ref s ) => s.as_slice() == sym,
       _ => false
     }
   }
 
   pub fn is_keyword( &self, kwd : &str ) -> bool {
     match self.kind {
-      TokenKind::Keyword( ref s ) => &s[] == kwd,
+      TokenKind::Keyword( ref s ) => s.as_slice() == kwd,
       _ => false
     }
   }
@@ -303,10 +303,10 @@ impl<'a> Tokenizer<'a> {
       }
     } );
 
-    let tkk = if is_keyword( &ident_buffer[] ) {
+    let tkk = if is_keyword( &ident_buffer ) {
       TokenKind::Keyword( ident_buffer )
 
-    } else if is_type_name( &ident_buffer[] ) {
+    } else if is_type_name( &ident_buffer ) {
       TokenKind::TypeName( ident_buffer )
 
     }else {
@@ -382,7 +382,7 @@ impl<'a> Tokenizer<'a> {
       }
     } );
 
-    let ival = FromStr::from_str( &intstr[] )
+    let ival = FromStr::from_str( &intstr )
                        .ok()
                        .expect( "Failed to read integer token" );
     Ok( Some( Token::new( TokenKind::Literal( Literal::Integer( ival ) )

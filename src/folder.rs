@@ -1,9 +1,11 @@
 use std::ptr;
 use std::mem::replace;
+use std::collections::hash_map::Entry;
 
 use ast::{Type, Expression, ExpressionKind, Class, Name
          , Ident, Function, Literal, uexpr};
 use builtin::{BuiltinType, BuiltinFn};
+use trans::Module;
 
 mod EK {
   pub use ast::ExpressionKind::*;
@@ -70,6 +72,11 @@ impl<T, E> MapTrying<T, E> for Box<T>
 
 pub trait Folder : Sized {
   type Failure;
+
+  fn fold_module( &mut self, v : Module ) -> Result<Module, Self::Failure> {
+    if self.is_done_folding() { return Ok( v ) }
+    follow_module( v, self )
+  }
 
   fn fold_fn( &mut self, v : Function ) -> Result<Function, Self::Failure> {
     if self.is_done_folding() { return Ok( v ) }
@@ -165,64 +172,58 @@ pub trait Folder : Sized {
     follow_exprs( v, self )
   }
 
-  fn fold_expr_kind( &mut self, v : ExpressionKind ) -> Result<ExpressionKind, Self::Failure> {
-    if self.is_done_folding() { return Ok( v ) }
-    follow_expr_kind( v, self )
+  fn fold_expr_let( &mut self, v : (Vec<Function>, Box<Expression>), ty : Type ) -> Result<((Vec<Function>, Box<Expression>), Type), Self::Failure> {
+    if self.is_done_folding() { return Ok( (v, ty) ) }
+    follow_expr_let( v, ty, self )
   }
 
-  fn fold_expr_kind_let( &mut self, v : (Vec<Function>, Box<Expression>) ) -> Result<(Vec<Function>, Box<Expression>), Self::Failure> {
-    if self.is_done_folding() { return Ok( v ) }
-    follow_expr_kind_let( v, self )
+  fn fold_expr_unresolved_name( &mut self, v : Ident, ty : Type ) -> Result<(Ident, Type), Self::Failure> {
+    if self.is_done_folding() { return Ok( (v, ty) ) }
+    follow_expr_unresolved_name( v, ty, self )
   }
 
-  fn fold_expr_kind_unresolved_name( &mut self, v : Ident ) -> Result<Ident, Self::Failure> {
-    if self.is_done_folding() { return Ok( v ) }
-    follow_expr_kind_unresolved_name( v, self )
+  fn fold_expr_apply( &mut self, v : Vec<Expression>, ty : Type ) -> Result<(Vec<Expression>, Type), Self::Failure> {
+    if self.is_done_folding() { return Ok( (v, ty) ) }
+    follow_expr_apply( v, ty, self )
   }
 
-  fn fold_expr_kind_apply( &mut self, v : Vec<Expression> ) -> Result<Vec<Expression>, Self::Failure> {
-    if self.is_done_folding() { return Ok( v ) }
-    follow_expr_kind_apply( v, self )
+  fn fold_expr_if( &mut self, v : (Box<Expression>, Box<Expression>, Box<Expression>), ty : Type ) -> Result<((Box<Expression>, Box<Expression>, Box<Expression>), Type), Self::Failure> {
+    if self.is_done_folding() { return Ok( (v, ty) ) }
+    follow_expr_if( v, ty, self )
   }
 
-  fn fold_expr_kind_if( &mut self, v : (Box<Expression>, Box<Expression>, Box<Expression>) ) -> Result<(Box<Expression>, Box<Expression>, Box<Expression>), Self::Failure> {
-    if self.is_done_folding() { return Ok( v ) }
-    follow_expr_kind_if( v, self )
+  fn fold_expr_literal( &mut self, v : Literal, ty : Type ) -> Result<(Literal, Type), Self::Failure> {
+    if self.is_done_folding() { return Ok( (v, ty) ) }
+    follow_expr_literal( v, ty, self )
   }
 
-  fn fold_expr_kind_literal( &mut self, v : Literal ) -> Result<Literal, Self::Failure> {
-    if self.is_done_folding() { return Ok( v ) }
-    follow_expr_kind_literal( v, self )
+  fn fold_expr_arg( &mut self, v : Ident, ty : Type ) -> Result<(Ident, Type), Self::Failure> {
+    if self.is_done_folding() { return Ok( (v, ty) ) }
+    follow_expr_arg( v, ty, self )
   }
 
-  fn fold_expr_kind_arg( &mut self, v : Ident ) -> Result<Ident, Self::Failure> {
-    if self.is_done_folding() { return Ok( v ) }
-    follow_expr_kind_arg( v, self )
+  fn fold_expr_named( &mut self, v : Name, ty : Type ) -> Result<(Name, Type), Self::Failure> {
+    if self.is_done_folding() { return Ok( (v, ty) ) }
+    follow_expr_named( v, ty, self )
   }
 
-  fn fold_expr_kind_named( &mut self, v : Name ) -> Result<Name, Self::Failure> {
-    if self.is_done_folding() { return Ok( v ) }
-    follow_expr_kind_named( v, self )
+  fn fold_expr_builtin_fn( &mut self, v : BuiltinFn, ty : Type ) -> Result<(BuiltinFn, Type), Self::Failure> {
+    if self.is_done_folding() { return Ok( (v, ty) ) }
+    follow_expr_builtin_fn( v, ty, self )
   }
 
-  fn fold_expr_kind_builtin_fn( &mut self, v : BuiltinFn ) -> Result<BuiltinFn, Self::Failure> {
-    if self.is_done_folding() { return Ok( v ) }
-    follow_expr_kind_builtin_fn( v, self )
+  fn fold_expr_fn_call( &mut self, v : (Box<Expression>, Vec<Expression>), ty : Type ) -> Result<((Box<Expression>, Vec<Expression>), Type), Self::Failure> {
+    if self.is_done_folding() { return Ok( (v, ty) ) }
+    follow_expr_fn_call( v, ty, self )
   }
 
-  fn fold_expr_kind_fn_call( &mut self, v : (Box<Expression>, Vec<Expression>) ) -> Result<(Box<Expression>, Vec<Expression>), Self::Failure> {
-    if self.is_done_folding() { return Ok( v ) }
-    follow_expr_kind_fn_call( v, self )
-  }
-
-  fn fold_expr_kind_invalid( &mut self ) -> Result<(), Self::Failure> {
-    if self.is_done_folding() { return Ok( () ) }
-    follow_expr_kind_invalid( self )
+  fn fold_expr_invalid( &mut self, ty : Type ) -> Result<Type, Self::Failure> {
+    if self.is_done_folding() { return Ok( ty ) }
+    follow_expr_invalid( ty, self )
   }
 
   fn fold_literal( &mut self, v : Literal ) -> Result<Literal, Self::Failure> {
-    if self.is_done_folding() { return Ok( v ) }
-    follow_literal( v, self )
+    Ok( v )
   }
 
   fn fold_builtin_fn( &mut self, v : BuiltinFn ) -> Result<BuiltinFn, Self::Failure> {
@@ -235,8 +236,16 @@ pub trait Folder : Sized {
   }
 }
 
-pub fn follow_expr_kind_invalid<F : Folder>( folder : &mut F ) -> Result<(), <F as Folder>::Failure> {
-  Ok( () )
+pub fn follow_module<F : Folder>( mut v : Module, folder : &mut F ) -> Result<Module, <F as Folder>::Failure> {
+  for (_, v) in v.functions.iter_mut() {
+    let f = replace( v, Function::empty() );
+    *v = try!( folder.fold_fn( f ) );
+  }
+  Ok( v )
+}
+
+pub fn follow_expr_invalid<F : Folder>( ty : Type, folder : &mut F ) -> Result<Type, <F as Folder>::Failure> {
+  Ok( try!( folder.fold_ty( ty ) ) )
 }
 
  
@@ -259,7 +268,12 @@ pub fn follow_fn<F : Folder>( mut v : Function, folder : &mut F ) -> Result<Func
   v.name = try!( folder.fold_ident( v.name ) );
   v.ty   = try!( folder.fold_ty( v.ty ) );
   v.arg_names = try!( v.arg_names.try_map( |a| folder.fold_ident( a ) ) );
-  v.body = try!( v.body.try_map( |b| folder.fold_expr( b ) ) );
+  // v.body = try!( v.body.try_map( |b| folder.fold_expr( b ) ) );
+
+  v.body = if let Some( bdy ) = v.body {
+    Some( try!( folder.fold_expr( bdy ) ) )
+  } else { None };
+
   v.constraints = try!( v.constraints.try_map( |c| folder.fold_class( c ) ) );
   Ok( v )
 }
@@ -380,10 +394,59 @@ pub fn follow_class<F : Folder>( mut v : Class, folder : &mut F ) -> Result<Clas
 
 
 pub fn follow_expr<F : Folder>( mut v : Expression, folder : &mut F ) -> Result<Expression, <F as Folder>::Failure> {
-  v.kind = try!( folder.fold_expr_kind( v.kind ) );
-  v.ty = try!( folder.fold_ty( v.ty ) );
-  
-  Ok( v )
+  let Expression { kind: mut kind, ty: mut ty } = v;
+  kind = match kind {
+    EK::Let( fs, bdy ) => {
+        let ((f, b), t) = try!( folder.fold_expr_let( (fs, bdy), ty ) );
+        ty = t;
+        EK::Let( f, b )
+      },
+    EK::UnresolvedNamed( idt ) => {
+        let (v, t) = try!( folder.fold_expr_unresolved_name( idt, ty ) );
+        ty = t;
+        EK::UnresolvedNamed( v )
+      },
+    EK::Apply( exprs ) => {
+        let (v, t) = try!( folder.fold_expr_apply( exprs, ty ) );
+        ty = t;
+        EK::Apply( v )
+      },
+    EK::If( cnd, thn, els ) => {
+        let ((c, th, e), t) = try!( folder.fold_expr_if( (cnd, thn, els), ty ) );
+        ty = t;
+        EK::If( c, th, e )
+      },
+    EK::Literal( lit ) => {
+        let (v, t) = try!( folder.fold_expr_literal( lit, ty ) );
+        ty = t;
+        EK::Literal( v )
+      },
+    EK::Arg( idt ) => {
+      let (v, t) = try!( folder.fold_expr_arg( idt, ty ) );
+      ty = t;
+      EK::Arg( v )
+    },
+    EK::Named( nam ) => {
+      let (v, t) = try!( folder.fold_expr_named( nam, ty ) );
+      ty = t; 
+      EK::Named( v )
+    },
+    EK::BuiltinFn( bif ) => {
+      let (v, t) = try!( folder.fold_expr_builtin_fn( bif, ty ) );
+      ty = t;
+      EK::BuiltinFn( v )
+    },
+    EK::FnCall( callee, args ) => {
+        let ((c, a), t) = try!( folder.fold_expr_fn_call( (callee, args), ty ) );
+        ty = t;
+        EK::FnCall( c, a )   
+      },
+    EK::Invalid => {
+        ty = try!( folder.fold_expr_invalid( ty ) );
+        EK::Invalid
+      },
+  };
+  Ok( Expression { kind: kind, ty: ty } )
 }
 
 
@@ -392,92 +455,58 @@ pub fn follow_exprs<F : Folder>( v : Vec<Expression>, folder : &mut F ) -> Resul
 }
 
 
-pub fn follow_expr_kind<F : Folder>( v : ExpressionKind, folder : &mut F ) -> Result<ExpressionKind, <F as Folder>::Failure> {
-  Ok( match v {
-    EK::Let( fs, bdy ) => {
-        let (f, b) = try!( folder.fold_expr_kind_let( (fs, bdy) ) );
-        EK::Let( f, b )
-      },
-    EK::UnresolvedNamed( idt ) =>
-      EK::UnresolvedNamed( try!( folder.fold_expr_kind_unresolved_name( idt ) ) ),
-    EK::Apply( exprs ) =>
-      EK::Apply( try!( folder.fold_expr_kind_apply( exprs ) ) ),
-    EK::If( cnd, thn, els ) => {
-        let (c, t, e) = try!( folder.fold_expr_kind_if( (cnd, thn, els) ) );
-        EK::If( c, t, e )
-      },
-    EK::Literal( lit ) =>
-      EK::Literal( try!( folder.fold_expr_kind_literal( lit ) ) ),
-    EK::Arg( idt ) =>
-      EK::Arg( try!( folder.fold_expr_kind_arg( idt ) ) ),
-    EK::Named( nam ) =>
-      EK::Named( try!( folder.fold_expr_kind_named( nam ) ) ),
-    EK::BuiltinFn( bif ) =>
-      EK::BuiltinFn( try!( folder.fold_expr_kind_builtin_fn( bif ) ) ),
-    EK::FnCall( callee, args ) => {
-        let (c, a) = try!( folder.fold_expr_kind_fn_call( (callee, args) ) );
-        EK::FnCall( c, a )   
-      },
-    EK::Invalid => {
-        try!( folder.fold_expr_kind_invalid() );
-        EK::Invalid
-      },
-  } )
+pub fn follow_expr_let<F : Folder>( (fs, ex) : (Vec<Function>, Box<Expression>), ty : Type, folder : &mut F ) -> Result<((Vec<Function>, Box<Expression>), Type), <F as Folder>::Failure> {
+  Ok( ((try!( fs.try_map( |f| folder.fold_fn( f ) ) )
+        , try!( ex.try_map( |e| folder.fold_expr( e ) ) ) )
+      , try!( folder.fold_ty( ty ) )) )
 }
 
 
-pub fn follow_expr_kind_let<F : Folder>( (fs, ex) : (Vec<Function>, Box<Expression>), folder : &mut F ) -> Result<(Vec<Function>, Box<Expression>), <F as Folder>::Failure> {
-  Ok( (try!( fs.try_map( |f| folder.fold_fn( f ) ) )
-      , try!( ex.try_map( |e| folder.fold_expr( e ) ) ) ) )
+pub fn follow_expr_unresolved_name<F : Folder>( v : Ident, ty : Type, folder : &mut F ) -> Result<(Ident, Type), <F as Folder>::Failure> {
+  Ok( (try!( folder.fold_ident( v ) ), try!( folder.fold_ty( ty ) )) )
 }
 
 
-pub fn follow_expr_kind_unresolved_name<F : Folder>( v : Ident, folder : &mut F ) -> Result<Ident, <F as Folder>::Failure> {
-  Ok( try!( folder.fold_ident( v ) ) )
+pub fn follow_expr_apply<F : Folder>( v : Vec<Expression>, ty : Type, folder : &mut F ) -> Result<(Vec<Expression>, Type), <F as Folder>::Failure> {
+  Ok( (try!( v.try_map( |val| folder.fold_expr( val ) ) )
+      , try!( folder.fold_ty( ty ) )) )
 }
 
 
-pub fn follow_expr_kind_apply<F : Folder>( v : Vec<Expression>, folder : &mut F ) -> Result<Vec<Expression>, <F as Folder>::Failure> {
-  Ok( try!( v.try_map( |val| folder.fold_expr( val ) ) ) )
+pub fn follow_expr_if<F : Folder>( (cnd, thn, els) : (Box<Expression>, Box<Expression>, Box<Expression>), ty : Type, folder : &mut F ) -> Result<((Box<Expression>, Box<Expression>, Box<Expression>), Type), <F as Folder>::Failure> {
+  Ok( ((try!( cnd.try_map( |c| folder.fold_expr( c ) ) )
+        , try!( thn.try_map( |t| folder.fold_expr( t ) ) )
+        , try!( els.try_map( |e| folder.fold_expr( e ) ) ) )
+       , try!( folder.fold_ty( ty ) )) )
 }
 
 
-pub fn follow_expr_kind_if<F : Folder>( (cnd, thn, els) : (Box<Expression>, Box<Expression>, Box<Expression>), folder : &mut F ) -> Result<(Box<Expression>, Box<Expression>, Box<Expression>), <F as Folder>::Failure> {
-  Ok( (try!( cnd.try_map( |c| folder.fold_expr( c ) ) )
-      , try!( thn.try_map( |t| folder.fold_expr( t ) ) )
-      , try!( els.try_map( |e| folder.fold_expr( e ) ) ) ) )
+pub fn follow_expr_literal<F : Folder>( v : Literal, ty : Type, folder : &mut F ) -> Result<(Literal, Type), <F as Folder>::Failure> {
+  Ok( (try!( folder.fold_literal( v ) ), try!( folder.fold_ty( ty ) )) )
 }
 
 
-pub fn follow_expr_kind_literal<F : Folder>( v : Literal, folder : &mut F ) -> Result<Literal, <F as Folder>::Failure> {
-  Ok( try!( folder.fold_literal( v ) ) )
+pub fn follow_expr_arg<F : Folder>( v : Ident, ty : Type, folder : &mut F ) -> Result<(Ident, Type), <F as Folder>::Failure> {
+  Ok( (try!( folder.fold_ident( v ) ), try!( folder.fold_ty( ty ) )) )
 }
 
 
-pub fn follow_expr_kind_arg<F : Folder>( v : Ident, folder : &mut F ) -> Result<Ident, <F as Folder>::Failure> {
-  Ok( try!( folder.fold_ident( v ) ) )
+pub fn follow_expr_named<F : Folder>( v : Name, ty : Type, folder : &mut F ) -> Result<(Name, Type), <F as Folder>::Failure> {
+  Ok( ( try!( folder.fold_name( v ) ), try!( folder.fold_ty( ty ) ) ) )
 }
 
 
-pub fn follow_expr_kind_named<F : Folder>( v : Name, folder : &mut F ) -> Result<Name, <F as Folder>::Failure> {
-  Ok( try!( folder.fold_name( v ) ) )
+pub fn follow_expr_builtin_fn<F : Folder>( v : BuiltinFn, ty : Type, folder : &mut F ) -> Result<(BuiltinFn, Type), <F as Folder>::Failure> {
+  Ok( (try!( folder.fold_builtin_fn( v ) ), try!( folder.fold_ty( ty ) )) )
 }
 
 
-pub fn follow_expr_kind_builtin_fn<F : Folder>( v : BuiltinFn, folder : &mut F ) -> Result<BuiltinFn, <F as Folder>::Failure> {
-  Ok( try!( folder.fold_builtin_fn( v ) ) )
+pub fn follow_expr_fn_call<F : Folder>( (cl, ar) : (Box<Expression>, Vec<Expression>), ty : Type, folder : &mut F ) -> Result<((Box<Expression>, Vec<Expression>), Type), <F as Folder>::Failure> {
+  Ok( ((try!( cl.try_map( |c| folder.fold_expr( c ) ) )
+        , try!( folder.fold_exprs( ar ) ))
+      , try!( folder.fold_ty( ty ) )) )
 }
 
-
-pub fn follow_expr_kind_fn_call<F : Folder>( (cl, ar) : (Box<Expression>, Vec<Expression>), folder : &mut F ) -> Result<(Box<Expression>, Vec<Expression>), <F as Folder>::Failure> {
-  Ok( (try!( cl.try_map( |c| folder.fold_expr( c ) ) )
-      , try!( folder.fold_exprs( ar ) )) )
-}
-
-
-pub fn follow_literal<F : Folder>( v : Literal, folder : &mut F ) -> Result<Literal, <F as Folder>::Failure> {
-  Ok( try!( folder.fold_literal( v ) ) )
-}
 
 pub fn follow_builtin_fn<F : Folder>( v : BuiltinFn, folder : &mut F ) -> Result<BuiltinFn, <F as Folder>::Failure> {
   Ok( v )

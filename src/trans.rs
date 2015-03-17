@@ -1,19 +1,19 @@
-use std::collections::hash_map::{HashMap, Entry};
+use std::collections::hash_map::{HashMap, Entry, Keys};
 use std::mem::replace;
 
-use filemap::{CharLoc};
-use ast::{Function, Type, Expression, ExpressionKind, Ident, Name, uexpr};
-use builtin::{BuiltinType, builtin_type, builtin_fn};
+use ast::{Function, Type, Expression, Ident, Name, uexpr};
+use builtin::{BuiltinType, BuiltinFn, builtin_type, builtin_fn};
+use folder::{self, Folder};
+use visitor::Visitor;
 
 // Code transformation and validation
 
-// ExpressionKind::* => EK::*
+// EK::* => ExpressionKind::*
 mod EK {
   pub use ast::ExpressionKind::*;
 }
 
 /*
-
   TODO: Make it so that multiple error can be reported instead
   of one at a time.
   Fix identation
@@ -108,7 +108,7 @@ impl Module {
     for (_, fun) in self.functions.iter_mut() {
       if let Some( ref mut body ) = fun.body {
         try!( Module::resolve_namespace_expr( body
-                                            , &fun.arg_names[]
+                                            , &fun.arg_names
                                             , &mut Name::from_ident( &fun.name
                                                                    , None )
                                             , &mut binds ) );
@@ -191,7 +191,7 @@ impl Module {
           for fun in fns.iter_mut() {
             if let Some( ref mut bdy ) = fun.body {
               try!( Module::resolve_namespace_expr( bdy
-                                                  , &fun.arg_names[]
+                                                  , &fun.arg_names
                                                   , scope
                                                   , binds ) );
             }
@@ -379,6 +379,7 @@ resolution: {:?}", inv )
     
     for (_, fun) in self.functions.iter_mut() {
       if let Some( ref mut bdy ) = fun.body {
+
         try!( Module::type_check_expr( bdy ) );
         // Coerce the return expression value if needed, or fail the type check
         let rty = if fun.ty.is_fn_type() {
@@ -394,9 +395,10 @@ resolution: {:?}", inv )
   }
 
   fn type_check_expr( expr : &mut Expression ) -> TResult<()> {
+
     // Get the type and kind seperately
     let &mut Expression{ kind: ref mut ekind, ty: ref mut ety } = expr;
-    
+
     match ekind {
       &mut EK::If( .. ) => {
         if let &mut EK::If( ref mut cnd, ref mut thn, ref mut els ) = ekind {
@@ -433,42 +435,15 @@ resolution: {:?}", inv )
       | &mut EK::Named( .. )
       | &mut EK::BuiltinFn( .. ) => {}, // Skip
       &mut EK::FnCall( ref mut callee, ref mut args ) => {
-        // Type checl the args and callee
+
+        // Type check the arguments and callee
         try!( Module::type_check_expr( callee ) );
+
         for arg in args.iter_mut() {
           try!( Module::type_check_expr( arg ) );
         }
 
-        if !callee.ty.is_fn_type() {
-          // Just a bug test
-          if args.len() == 0 {
-            panic!( "Found a non-function call with zero arguments! {:?}"
-                  , callee )
-          }
-          // Report an error, we can't call a non-function value
-          let errexpr = Expression::new( EK::FnCall( callee.clone()
-                                                   , args.clone() )
-                                       , ety.clone() );
-          return Err( TransError::UncallableValue( errexpr ) )
-        }
-        // Check for partial application
-        if callee.ty.argument_count() > args.len() {
-          panic!( "Partial application is not implemented: {:?}", callee )
-        }
-        // Check for over-application
-        if callee.ty.argument_count() < args.len() {
-          // If the current function returns a function, we assume it's
-          // over application
-          if callee.ty.return_type().is_fn_type() {
-            panic!( "Over application is not implemented: {:?}", callee )
-          // Otherwise we assue that there's just too many arguments
-          } else {
-            let errexpr = Expression::new( EK::FnCall( callee.clone()
-                                                     , args.clone() )
-                                         , ety.clone() );
-            return Err( TransError::InvalidArgumentCount( errexpr ) )
-          }
-        }
+        try!( Module::type_check_function_call( callee, args, ety ) );
 
         for (i, arg) in args.iter_mut().enumerate() {
           try!( Module::coerce_expr( arg, callee.ty.argument_type( i ) ) );
@@ -476,6 +451,91 @@ resolution: {:?}", inv )
 
       },
       inv => panic!( "Type checking is not implemented for: {:?}", inv )
+    }
+
+    Ok( () )
+  }
+
+  fn type_check_function_call( callee : &mut Expression
+                             , args   : &mut Vec<Expression>
+                             , ety    : &mut Type ) -> TResult<()> {
+
+    // Then make sure we're not trying to call a non-function
+    if !callee.ty.is_fn_type() {
+      // Just a bug test
+      if args.len() == 0 {
+        panic!( "Found a non-function call with zero arguments! {:?}"
+              , callee )
+      }
+      // Report an error, we can't call a non-function value
+      let errexpr = Expression::new( EK::FnCall( Box::new( callee.clone() )
+                                               , args.clone() )
+                                   , ety.clone() );
+      return Err( TransError::UncallableValue( errexpr ) )
+    }
+
+    // Check for partial application
+    if callee.ty.argument_count() > args.len() {
+      panic!( "Partial application is not implemented: {:?}", callee )
+    }
+
+    // Check for over-application
+    if callee.ty.argument_count() < args.len() {
+      // If the current function returns a function, we assume it's
+      // over application
+      if callee.ty.return_type().is_fn_type() {
+        // panic!( "Over application is not implemented: {:?}", callee )
+
+        // Notes on in-place modification:
+        // - Currently we are inspecting the node where the over-application
+        //   is initially found, which means if we want to expand in place
+        //   this will become the outer node ( the one over-applying )
+
+        // The leftover arguments are the ones remaining after we take
+        // the ones needed for the root application
+        
+        // TYPES!
+        // The root function call expression will have the type of it's
+        // return value, while the current code will have the type of
+        // the resulting application
+
+        // Swap out the current nodes arguments for the leftover ones
+        let left_over_args = args.split_off( callee.ty.argument_count() );
+        let root_args = replace( args, left_over_args );
+
+        // Temporarily plug out the root call
+        let root_callee = replace( callee, uexpr( EK::Invalid ) );
+
+        // Temporarily plug out the root type
+        let root_ty = replace( ety, Type::Untyped );
+
+        let root_call = Expression::new( EK::FnCall( Box::new( root_callee )
+                                                   , root_args )
+                                       , root_ty );
+
+        // New the thing we're calling is the result of the last 
+        *callee = root_call;
+
+        // Since our previous if-statement check that the type of the function
+        // call is another function, we can safely assume it also has a return
+        // type. With that information we can set the outer calls initial type
+        // to the return type of that ( it may be modified by the recursive
+        // call of this function ).
+
+        *ety = callee.ty.return_type().clone();
+
+        // Do a recursive check on the newly generated node, so that
+        // it's type check and so that chained over-application + partial
+        // application is possible
+        try!( Module::type_check_function_call( callee, args, ety ) )
+
+      // Otherwise we assume that there's just too many arguments
+      } else {
+        let errexpr = Expression::new( EK::FnCall( Box::new( callee.clone() )
+                                                 , args.clone() )
+                                     , ety.clone() );
+        return Err( TransError::InvalidArgumentCount( errexpr ) )
+      }
     }
 
     Ok( () )
@@ -498,12 +558,15 @@ resolution: {:?}", inv )
           // Or just a normal function call otherwise
           EK::FnCall( Box::new( innerexpr ), Vec::new() )
         };
+
         let t = replace( &mut expr.ty, Type::Untyped );
+        
         if let Type::Fn( _, ret ) = t {
           expr.ty = *ret;
         } else {
           panic!( "Got unexpected type while coercing: {:?}", t )
         }
+        
       // We're out of options, the types just don't match
       } else {
         // So let's just report the error
@@ -518,82 +581,116 @@ resolution: {:?}", inv )
     Ok( () )
   }
 
-  fn type_annotate( &mut self ) -> TResult<()> {
+}
 
-    let mut typemap : HashMap<Name, Type> =
-      self.functions.iter()
-                    .map( |(k, v)| (k.clone(), v.ty.clone()) )
-                    .collect();
+struct NameValidator<'a> {
+  error : Option<TransError>,
+  names : Keys<'a, Name, Function>
+}
 
-    for (_, fun) in self.functions.iter_mut() {
-      if let Some( ref mut bdy ) = fun.body {
-        try!( Module::type_annotate_expr( bdy, &fun.arg_names[]
-                                        , &fun.ty, &mut typemap ) );
-      }
+impl<'a> Visitor<'a> for NameValidator<'a> {
+  fn visit_name( &mut self, name : &'a Name ) {
+    let mut noloc_name = name.clone();
+    noloc_name.no_loc();
+
+    if !self.names.clone().any( |k| k.same( &noloc_name ) ) {
+      self.error = Some( TransError::UndefinedName( name.clone() ) );
     }
-
-    Ok( () )
   }
 
-  // Walks through the tree and annotate the expr.ty for the
-  // type checker to validate later down the pipeline.
-  fn type_annotate_expr( expr : &mut Expression
-                       , args : &[Ident]
-                       , fty  : &Type
-                       , typemap : &mut HashMap<Name, Type> ) -> TResult<()> {
-    let &mut Expression{ kind: ref mut ekind, ty: ref mut ety  } = expr;
+  fn is_done_visiting( &mut self ) -> bool {
+    self.error.is_some()
+  }
+}
 
-    match ekind {
-      &mut EK::If( ref mut cnd, ref mut thn, ref mut els ) => {
-        // Annotate all the sub-expressions
-        try!( Module::type_annotate_expr( &mut **cnd, args, fty, typemap ) );
-        try!( Module::type_annotate_expr( &mut **thn, args, fty, typemap ) );
-        try!( Module::type_annotate_expr( &mut **els, args, fty, typemap ) );
+impl<'a> NameValidator<'a> {
+  fn validate( module : &Module ) -> TResult<()> {
+    let mut validator = NameValidator { error: None
+                                      , names: module.functions.keys() };
+    validator.visit_module( module );
+    if let Some( err ) = validator.error {
+      Err( err )
+    } else {
+      Ok( () )
+    }
+  }
+}
 
-        // A if-expresionn takes the type of it's branches
-        // Branch type consistency will be checked later
-        // so for now we'll just assume that they both
-        // have the same type.
-        *ety = thn.ty.clone();
-      },
-      &mut EK::Literal( .. ) => {},
-      &mut EK::Arg( ref idt ) => {
-        let idx = args.iter().position( |v| v.text == idt.text )
-                             .expect( "Encountered non-existant arg." );
-        *ety = fty.argument_type( idx ).clone();
-      },
-      &mut EK::Named( ref mut fnam_spot ) => {
-        // Swap out the Name so we can own it for a little
-        let mut fnam = replace( fnam_spot, Name::root() );
-        // Swap out the location temporarely so we can get a source-position
-        // independant hash of the name.
-        let fnloc = replace( &mut fnam.loc, None );
-        *ety = typemap.get( &fnam ).expect( "Encountered non-existant fn." )
-                                  .clone();
-        // Then restore it for possible later use
-        fnam.loc = fnloc;
-        // And swap the name back into the tree
-        let _ = replace( fnam_spot, fnam );
-      },
-      &mut EK::BuiltinFn( ref bif ) => {
-        *ety = bif.get_type();
-      },
-      &mut EK::FnCall( ref mut f, ref mut fargs ) => {
-        for arg in fargs.iter_mut() {
-          try!( Module::type_annotate_expr( arg, args, fty, typemap ) );
-        }
+struct TypeAnnotator {
+  fntypes : HashMap<Name, Type>,
+  argtypes : HashMap<Name, Type>
+}
 
-        try!( Module::type_annotate_expr( &mut **f, args, fty, typemap ) );
+type IfEK = (Box<Expression>, Box<Expression>, Box<Expression>);
 
-        *ety = f.ty.return_type()
-                   .clone();
-      }
-      inv => panic!( "Type annotation is not implemented for: {:?}", inv )
+impl Folder for TypeAnnotator {
+  type Failure = TransError;
+
+  fn fold_fn( &mut self, mut fun : Function ) -> TResult<Function> {
+    self.argtypes.clear();
+    
+    for (i, arg) in fun.arg_names.iter().enumerate() {
+      let mut arg_key = Name::from_ident( arg, None );
+      // Make the location consistent for the hash
+      arg_key.no_loc();
+      self.argtypes.insert( arg_key, fun.ty.argument_type( i ).clone() );
     }
 
-    Ok( () )
+    folder::follow_fn( fun, self )
   }
 
+  fn fold_expr_if( &mut self, cte : IfEK, ty : Type ) -> TResult<(IfEK, Type)> {
+    let ((cnd, thn, els), _) = try!( folder::follow_expr_if( cte, ty, self ) );
+    let thnty = thn.ty.clone();
+    Ok( ((cnd, thn, els), thnty) )
+  }
+
+  fn fold_expr_arg( &mut self, idt : Ident, ty : Type ) -> TResult<(Ident, Type)> {
+    let (_, t) = self.get_type( Name::from_ident( &idt, None ) );
+    Ok( (idt.clone(), t.expect( &format!( "Encountered non-existant arg. {:?}", idt ) ).clone()) )
+  }
+
+  fn fold_expr_named( &mut self, idt : Name, ty : Type ) -> TResult<(Name, Type)> {
+    let (i, t) = self.get_type( idt.clone() );
+    Ok( (i, t.expect( &format!( "Encountered non-existant fn. {:?}", idt ) ).clone()) )
+  }
+
+  fn fold_expr_builtin_fn( &mut self, bit : BuiltinFn, ty : Type ) -> TResult<(BuiltinFn, Type)> {
+    let bity = bit.get_type();
+    Ok( (bit, bity) )
+  }
+
+  fn fold_expr_fn_call( &mut self, f : (Box<Expression>, Vec<Expression>), ty : Type ) -> TResult<((Box<Expression>, Vec<Expression>), Type)> {
+    let ((fe, fargs), _) = try!( folder::follow_expr_fn_call( f, ty, self ) );
+    let ferety = fe.ty.return_type().clone();
+    Ok( ((fe, fargs), ferety) )
+  }
+}
+
+impl TypeAnnotator {
+  fn annotate( module : Module ) -> TResult<Module> {
+    let mut ftmap : HashMap<Name, Type> =
+      module.functions.iter()
+                      .map( |(k, v)| {
+                        let mut nk = k.clone();
+                        nk.no_loc();
+
+                        (nk, v.ty.clone())
+                      } )
+                      .collect();
+    let atmap = HashMap::new();
+
+    TypeAnnotator { fntypes: ftmap, argtypes: atmap }.fold_module( module )
+  }
+
+  fn get_type( &mut self, mut nam : Name ) -> (Name, Option<Type>) {
+    nam.no_loc();
+
+    let rty = self.fntypes.get( &nam )
+                          .or_else( || self.argtypes.get( &nam ) )
+                          .map( |v| v.clone() );
+    (nam, rty)
+  }
 }
 
 pub fn validate_module( name : String, fns : Vec<Function> )
@@ -605,10 +702,10 @@ pub fn validate_module( name : String, fns : Vec<Function> )
   }
 
   try!( module.resolve_namespaces() );
-  try!( module.validate_names() );
+  try!( NameValidator::validate( &module ) );
   try!( module.resolve_applications() );
   try!( module.resolve_types() );
-  try!( module.type_annotate() );
+  module = try!( TypeAnnotator::annotate( module ) );
   try!( module.check_types() );
   
   Ok( module )

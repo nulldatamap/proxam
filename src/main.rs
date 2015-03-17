@@ -1,4 +1,4 @@
-#![feature(box_patterns)]
+#![feature(rustc_private)]
 
 #[macro_use]
 extern crate version;
@@ -25,6 +25,8 @@ mod codegen;
 mod test;
 
 fn main() {
+  use std::path::PathBuf;
+
   println!( "Proxam compiler v{}", version!() );
 
   let test_name = "<test>";
@@ -32,7 +34,7 @@ fn main() {
 
   let mut filemap = filemap::Filemap::new();
   let fstart = match filemap.add_from_file( test_name.to_string()
-                                          , Path::new( "src/testsrc.pxm" ) ) {
+                                          , PathBuf::new( "src/testsrc.pxm" ) ) {
       Ok( s ) => s,
       Err( err ) => {
         println!( "Failed to add to the file map: {:?}", err );

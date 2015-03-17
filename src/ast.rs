@@ -172,6 +172,14 @@ impl Function {
              , body: body
              , constraints: constraints }
   }
+
+  pub fn empty() -> Function {
+    Function { name: Ident::empty()
+             , ty: Type::Untyped
+             , arg_names: Vec::new()
+             , body : None
+             , constraints: Vec::new() }
+  }
 }
 
 impl Loc for Function {
@@ -207,7 +215,7 @@ impl Name {
       if !first {
         r.push_str( "::" );
       }
-      r.push_str( &frg[] );
+      r.push_str( &frg );
 
       first = false;
     }
@@ -240,7 +248,7 @@ impl Name {
     // Check if they origin scope and the name matches the Name
     // without having to allocate a whole new Name to check against
     self.name.init() == scope.name && self.name.last()
-                                               .map( |v| &v[] == name )
+                                               .map( |v| v.as_slice() == name )
                                                .unwrap_or( false )
   }
 
@@ -261,7 +269,7 @@ impl Name {
   }
 
   pub fn top_name_matches( &self, n : &str ) -> bool {
-    &self.top_name()[] == n
+    self.top_name().as_slice() == n
   }
 
 }
@@ -354,6 +362,10 @@ impl Ident {
       panic!( "Tried to create an ident from a non-ident token!" )
     }
     Ident{ text: tk.get_text(), loc: tk.loc() }
+  }
+
+  pub fn empty() -> Ident {
+    Ident { text: String::new(), loc: CharLoc( 0 ) }
   }
 
 }
