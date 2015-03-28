@@ -1,6 +1,23 @@
 
 ; Yay the syntax is getting parsed correctly!
+
 type Years = Int
+
+; UniqueType( 'Years', <Int> )
+data Years = Int
+
+; UniqueType( 'User', box Structure( [ 'name', 'age' ]
+;                                  , [ <String>, <Int> ] ) )
+
+data User =
+  name : String,
+  age  : Int
+
+; UniqueType( 'FamilyMember', box Structure( [ 'name', 'age' ]
+;                                          , [ <String>, <Int> ] ) )
+data FamilyMember = 
+  name : String,
+  age  : Int
 
 def id x : Int -> Int = x
 
@@ -8,10 +25,9 @@ def id x : Int -> Int = x
 def print_int x : Int -> ()
 
 ; A function that returns a function
-def wowser x y : Int, Int -> Int = 
-  0
+def wowser x y : Int Int -> Int = 0
 
-def super_wowser x : Int -> ( Int, Int -> Int ) = 
+def super_wowser x : Int -> ( Int Int -> Int ) = 
   wowser
 
 def test_overapplication : Int = 
@@ -21,3 +37,4 @@ def test_overapplication : Int =
 
 def main : () =
   print_int ( super_wowser 1 0 0  )
+

@@ -80,6 +80,16 @@ pub trait Visitor<'a> : Sized {
     walk_ty_application( v, self )
   }
 
+  fn visit_ty_unique( &mut self, v : ( &'a Ident, &'a Type ) ) {
+    if self.is_done_visiting() { return }
+    walk_ty_unique( v, self );
+  }
+
+  fn visit_ty_structure( &mut self, v : &'a [(Ident, Type)] ) {
+    if self.is_done_visiting() { return }
+    walk_ty_structure( v, self )
+  }
+
   fn visit_ty_untyped( &mut self ) {
   }
 
@@ -193,6 +203,8 @@ pub fn walk_ty<'a, V : Visitor<'a>>( v : &'a Type, visitor : &mut V ) {
   match v {
     &Type::NamedType( ref idt ) => visitor.visit_ty_named_type( idt ),
     &Type::Unit => visitor.visit_ty_unit(),
+    &Type::Unique( ref id, ref ty ) => visitor.visit_ty_unique( (id, &ty) ),
+    &Type::Structure( ref pairs ) => visitor.visit_ty_structure( pairs ),
     &Type::Tuple( ref ts ) => visitor.visit_ty_tuple( ts ),
     &Type::List( ref t ) => visitor.visit_ty_list( t ),
     &Type::Fn( ref ar, ref re ) => visitor.visit_ty_fn( (ar, re) ),
@@ -249,6 +261,19 @@ pub fn walk_ty_closure<'a, V : Visitor<'a>>( (en, ar, re) : (&'a [Type], &'a [Ty
 
 pub fn walk_ty_application<'a, V : Visitor<'a>>( (ty, _) : (&'a Type, u32), visitor : &mut V ) {
   visitor.visit_ty( ty );
+}
+
+
+fn walk_ty_unique<'a, V : Visitor<'a>>( (id, ty) : ( &'a Ident, &'a Type ), visitor : &mut V ) {
+  visitor.visit_ident( id );
+  visitor.visit_ty( ty )
+}
+
+fn walk_ty_structure<'a, V : Visitor<'a>>( v : &'a [(Ident, Type)], visitor : &mut V ) {
+  for &(ref id, ref ty) in v {
+    visitor.visit_ident( id );
+    visitor.visit_ty( ty )
+  }
 }
 
 

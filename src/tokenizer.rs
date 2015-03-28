@@ -69,14 +69,14 @@ impl Token {
 
   pub fn is_symbol( &self, sym : &str ) -> bool {
     match self.kind {
-      TokenKind::Symbol( ref s ) => s.as_slice() == sym,
+      TokenKind::Symbol( ref s ) => &s[..] == sym,
       _ => false
     }
   }
 
   pub fn is_keyword( &self, kwd : &str ) -> bool {
     match self.kind {
-      TokenKind::Keyword( ref s ) => s.as_slice() == kwd,
+      TokenKind::Keyword( ref s ) => &s[..] == kwd,
       _ => false
     }
   }
@@ -141,7 +141,7 @@ pub enum TokenizerError {
 }
 
 // For brevity
-type TResult<T> = Result<T, TokenizerError>;
+pub type TResult<T> = Result<T, TokenizerError>;
 
 // This will chain multiple parsing functions together that
 // may fail in a readable manner
@@ -179,7 +179,8 @@ fn is_digit_char( chr : char ) -> bool {
 
 fn is_keyword( s : &str ) -> bool {
   match s {
-    "if" | "let" | "then" | "else" | "in" | "def" | "where" | "type" => true,
+    "if" | "let" | "then" | "else" | "in" | "def" | "where" | "type"
+         | "data" => true,
     _ => false
   }
 }

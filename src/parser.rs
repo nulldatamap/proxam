@@ -50,7 +50,7 @@ static operators : [(&'static str, u32); operator_count] =
        , (".", 6) ]; // Highest precedence
 
 // For brevity
-type PResult<T> = Result<T, ParserError>;
+pub type PResult<T> = Result<T, ParserError>;
 
 impl<'a> Parser<'a> {
   fn new( name : &'a str, src : &'a str, tokens : &'a[Token] )
@@ -83,23 +83,30 @@ impl<'a> Parser<'a> {
   }
 
   fn item( &mut self ) -> PResult<Item> {
-    if let Ok( fun ) = self.fn_def() {
+    if let Some( fun ) = try!( self.fn_def() ) {
       Ok( Item::Fn( fun ) )
-    } else {
+    } else if let Some( ty ) = try!( self.type_def() ) {
       // This may fail, since anything else is invalid syntax
-      Ok( Item::Type( try!( self.type_def() ) ) )  
+      Ok( Item::Type( ty ) )
+    } else if let Some( dt ) = try!( self.data_def() ) {
+      Ok( Item::Type( dt ) )
+    } else {
+      return Err( self.syntax_error( "item", "function definition, type alias\
+ or data type definition" ) )
     }
   }
 
-  fn fn_def( &mut self ) -> PResult<Function> {
+  fn fn_def( &mut self ) -> PResult<Option<Function>> {
 
     if !self.get_current().is_keyword( "def" ) {
-      return Err( self.syntax_error( "function", "'def'" ) )
+      // Used to be a syntax error:
+      // return Err( self.syntax_error( "function", "'def'" ) )
+      return Ok( None )
     }
 
     self.next();
 
-    self.function()
+    Ok( Some( try!( self.function() ) ) )
   }
 
   fn function( &mut self ) -> PResult<Function> {
@@ -153,53 +160,35 @@ impl<'a> Parser<'a> {
     let start_ty = try!( self._type() );
     
     let start = self.get_current();
+    
+    let mut arg_types = Vec::new();
 
-    if !( start.is_symbol( "->" ) || start.is_symbol( "," ) ) {
-      return Ok( start_ty )
-    }
-
-    self.push_checkpoint();
-
-    if self.get_current().is_symbol( "," ) {
+    if !( start.is_symbol( "->" ) ) {
       self.push_checkpoint();
 
-      self.next();
+      let ty = match self._type() {
+        Ok( t ) => t,
+        Err( .. ) => {
+          self.pop_checkpoint();
+          return Ok( start_ty )
+        }
+      };
 
-      if self.get_current().is_symbol( ")" ) {
-
-        self.pop_checkpoint();
-        self.pop_checkpoint();
-
-        return Ok( start_ty )
-      }
-      self.pop_checkpoint();
+      arg_types.push( start_ty );
+      arg_types.push( ty );
+    } else {
+      arg_types.push( start_ty );
     }
 
-    let mut args = vec![ start_ty ];
-
-    while self.get_current().is_symbol( "," ) {
-      self.next();
-      args.push( try!( self._type() ) );
-      // In case this is actually is a tuple and not a function
-      // This is not very efficient, but it works
-      if self.get_current().is_symbol( ")" ) {
-        self.pop_checkpoint();
-
-        return Ok( args.remove( 0 ) )
-      }
-    }
-
-    if !self.get_current().is_symbol( "->" ) {
-      return Err( self.syntax_error( "function type", "'->'" ) )
+    while !self.get_current().is_symbol( "->" ) {
+      arg_types.push( try!( self._type() ) );
     }
 
     self.next();
 
-    let ret = try!( self.any_type() );
+    let ret_ty = try!( self.any_type() );
 
-    let ty = Type::Fn( args, Box::new( ret ) );
-
-    Ok( ty )
+    Ok( Type::Fn( arg_types, Box::new( ret_ty ) ) )
   }
 
   fn _type( &mut self ) -> PResult<Type> {
@@ -524,10 +513,12 @@ impl<'a> Parser<'a> {
     Ok( Some( uexpr( EK::Let( let_items, Box::new( expr ) ) ) ) )
   }
 
-  fn type_def( &mut self ) -> PResult<TypeDefinition> {
+  fn type_def( &mut self ) -> PResult<Option<TypeDefinition>> {
 
     if !self.get_current().is_keyword( "type" ) {
-      return Err( self.syntax_error( "type definition", "'type'" ) )
+      // Used to return an error:
+      // return Err( self.syntax_error( "type definition", "'type'" ) )
+      return Ok( None )
     }
 
     self.next();
@@ -548,7 +539,73 @@ impl<'a> Parser<'a> {
 
     let base = try!( self.any_type() );
 
-    Ok( TypeDefinition::new( name, base ) )
+    Ok( Some( TypeDefinition::Alias( name, base ) ) )
+  }
+
+  fn data_def( &mut self ) -> PResult<Option<TypeDefinition>> {
+
+    if !self.get_current().is_keyword( "data" ) {
+      return Ok( None )
+    }
+
+    self.next();
+
+    if !self.get_current().is_type_name() {
+      return Err( self.syntax_error( "data type definition"
+                                   , "data type name" ) )
+    }
+
+    let name = Ident::from_token( &self.get_current().as_ident() );
+    let mut body : Type;
+
+    self.next();
+
+    if !self.get_current().is_symbol( "=" ) {
+      return Err( self.syntax_error( "data type definition", "'='" ) )
+    }
+
+    self.next();
+
+    if !self.get_current().is_ident() {
+      body = try!( self.any_type() );
+      return Ok( Some( TypeDefinition::Data( Type::Unique( name
+                                                         , Box::new( body ) ) ) ) )
+    }
+
+    let mut fields = Vec::new();
+
+    loop {
+      // Parse the field name
+      if !self.get_current().is_ident() {
+        return Err( self.syntax_error( "data type definition fields", "field name" ) ) 
+      }
+
+      let field_name = Ident::from_token( self.get_current() );
+
+      self.next();
+
+      if !self.get_current().is_symbol( ":" ) {
+        return Err( self.syntax_error( "data type definition fields", "':'" ) )
+      }
+
+      self.next();
+
+      // Parse the field type
+      let field_type = try!( self.any_type() );
+
+      fields.push( (field_name, field_type) );
+
+      // Continue if a colon is present
+      if !self.get_current().is_symbol( "," ) {
+        break;
+      }
+
+      self.next();
+    }
+
+    body = Type::Structure( fields );
+
+    Ok( Some( TypeDefinition::Data( Type::Unique( name, Box::new( body ) ) ) ) )
   }
 
   fn syntax_error( &mut self, whre : &'static str, wht : &'static str )

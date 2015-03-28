@@ -1,4 +1,7 @@
 #![feature(rustc_private)]
+// TOOD: Remove these warning suppressors
+#![allow(unused_imports, unused_variables, unused_mut)]
+#![feature(str_char, core, collections)]
 
 #[macro_use]
 extern crate version;
@@ -33,8 +36,10 @@ fn main() {
   let test_module_name = "helloworld";
 
   let mut filemap = filemap::Filemap::new();
+  let mut path = PathBuf::new();
+  path.push( "src/testsrc.pxm" );
   let fstart = match filemap.add_from_file( test_name.to_string()
-                                          , PathBuf::new( "src/testsrc.pxm" ) ) {
+                                          , path ) {
       Ok( s ) => s,
       Err( err ) => {
         println!( "Failed to add to the file map: {:?}", err );
@@ -52,7 +57,7 @@ fn main() {
     }
   };
 
-  let ast = match Parser::parse( test_name, fdes.source, tks.as_slice() ) {
+  let ast = match Parser::parse( test_name, fdes.source, &tks[..] ) {
     Ok( ast ) => ast,
     Err( err ) => {
       println!( "Failed to parse: {:?}", err );

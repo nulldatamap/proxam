@@ -7,13 +7,15 @@ use tokenizer;
 use tokenizer::{Token, TokenKind};
 use builtin::{BuiltinType, BuiltinFn};
 
-type TLiteral = tokenizer::Literal;
+pub type TLiteral = tokenizer::Literal;
 
 #[derive(Clone, PartialEq)]
 pub enum Type {
   NamedType( Ident ),
   Unit,
+  Unique( Ident, Box<Type> ),
   Tuple( Vec<Type> ),
+  Structure( Vec<(Ident, Type)> ),
   List( Box<Type> ),
   Fn( Vec<Type>, Box<Type> ),
   // A generic type parameter with possible constraints
@@ -42,6 +44,14 @@ impl fmt::Debug for Type {
     match self {
       &Type::NamedType( ref n ) => write!( f, "<{}>", n.text ),
       &Type::Unit => write!( f, "()" ),
+      &Type::Unique( ref id, ref ty ) => write!( f, "{}:{:?}", id.text, ty ),
+      &Type::Structure( ref pairs ) => {
+        write!( f, "{{" );
+        for &(ref id, ref ty) in pairs {
+          write!( f, "{} : {:?},", id.text, ty );
+        }
+        write!( f, "}}" )
+      },
       &Type::Tuple( ref els ) => {
         write!( f, "(" );
         for el in els { 
@@ -248,7 +258,7 @@ impl Name {
     // Check if they origin scope and the name matches the Name
     // without having to allocate a whole new Name to check against
     self.name.init() == scope.name && self.name.last()
-                                               .map( |v| v.as_slice() == name )
+                                               .map( |v| &v[..] == name )
                                                .unwrap_or( false )
   }
 
@@ -269,7 +279,7 @@ impl Name {
   }
 
   pub fn top_name_matches( &self, n : &str ) -> bool {
-    self.top_name().as_slice() == n
+    &self.top_name()[..] == n
   }
 
 }
@@ -313,22 +323,15 @@ pub fn uexpr( ek : ExpressionKind ) -> Expression {
 }
 
 #[derive(Debug)]
-pub struct TypeDefinition {
-  pub name : Ident,
-  pub base : Type
-}
-
-impl TypeDefinition {
-  pub fn new( name : Ident, base : Type ) -> TypeDefinition {
-    TypeDefinition { name: name, base: base }
-  }
+pub enum TypeDefinition {
+  Alias( Ident, Type ),
+  Data( Type )
 }
 
 #[derive(Debug)]
 pub enum Item {
   Fn( Function ),
-  Type( TypeDefinition ),
-  // Data( DataDefinition )
+  Type( TypeDefinition )
 }
 
 #[derive(Debug, Clone)]

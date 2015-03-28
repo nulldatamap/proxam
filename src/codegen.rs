@@ -96,7 +96,7 @@ impl Codegen {
       // Insert the ValueRef of the function into the functions
       self.functions.insert( fname, f );
 
-      for (arg, i) in fnargs.iter().zip( range( 0, fnargs.len() ) ) {
+      for (arg, i) in fnargs.iter().zip( 0.. fnargs.len() ) {
         let carg = CString::new( arg.text.as_bytes() ).unwrap();
         let prm = llvm::get_param( f, i as u32 );
 
@@ -271,7 +271,7 @@ impl Codegen {
     }
   }
 
-  fn get_named_value( &mut self, mut name : Name ) -> ValueRef {
+  fn get_named_value( &mut self, name : Name ) -> ValueRef {
     *self.functions.get( &name.to_string() )
                    .expect( "Expted function in codegen." )
   }

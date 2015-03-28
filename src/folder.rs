@@ -152,6 +152,16 @@ pub trait Folder : Sized {
     follow_ty_application( v, self )
   }
 
+  fn fold_ty_unique( &mut self, v : (Ident, Box<Type>) ) -> Result<(Ident, Box<Type>), Self::Failure> {
+    if self.is_done_folding() { return Ok( v ) }
+    follow_ty_unique( v, self )
+  }
+
+  fn fold_ty_structure( &mut self, v : Vec<(Ident, Type)> ) -> Result<Vec<(Ident, Type)>, Self::Failure> {
+    if self.is_done_folding() { return Ok( v ) }
+    follow_ty_structure( v, self )
+  }
+
   fn fold_ty_untyped( &mut self ) -> Result<(), Self::Failure> {
     if self.is_done_folding() { return Ok( () ) }
     follow_ty_untyped( self )
@@ -291,6 +301,13 @@ pub fn follow_ty<F : Folder>( v : Type, folder : &mut F ) -> Result<Type, <F as 
       try!( folder.fold_ty_unit() );
       Type::Unit
     },
+    Type::Unique( id, ty ) => {
+      let (i, t) = try!( folder.fold_ty_unique( (id, ty) ) );
+      Type::Unique( i, t )
+    },
+    Type::Structure( pairs ) => {
+      Type::Structure( try!( folder.fold_ty_structure( pairs ) ) )
+    },
     Type::Tuple( ts ) => Type::Tuple( try!( folder.fold_ty_tuple( ts ) ) ),
     Type::List( inner ) => Type::List( try!( folder.fold_ty_list( inner ) ) ),
     Type::Fn( args, ret ) => {
@@ -384,6 +401,22 @@ pub fn follow_ty_application<F : Folder>( (inner, aps) : (Box<Type>, u32), folde
   Ok( (i, aps) )
 }
 
+pub fn follow_ty_unique<F : Folder>( (id, ty) : (Ident, Box<Type>), folder : &mut F ) -> Result<(Ident, Box<Type>), <F as Folder>::Failure> {
+  let i = try!( folder.fold_ident( id ) );
+  let t = try!( ty.try_map( |v| folder.fold_ty( v ) ) );
+
+  Ok( (i, t) )
+}
+
+pub fn follow_ty_structure<F : Folder>( pairs : Vec<(Ident, Type)>, folder : &mut F ) -> Result<Vec<(Ident, Type)>, <F as Folder>::Failure> {
+  let p = try!( pairs.try_map( |(id, ty)| {
+    let i = try!( folder.fold_ident( id ) );
+    let t = try!( folder.fold_ty( ty ) );
+    Ok( (i, t) )
+  } ) );
+
+  Ok( p )
+}
 
 pub fn follow_class<F : Folder>( mut v : Class, folder : &mut F ) -> Result<Class, <F as Folder>::Failure> {
   v.name = try!( folder.fold_ident( v.name ) );

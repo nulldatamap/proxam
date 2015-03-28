@@ -68,7 +68,7 @@ struct FilemapEntry {
 impl FilemapEntry {
   fn new( name : String, path : Option<PathBuf>, source : String
         , start_loc : CharLoc ) -> FilemapEntry {
-    let lines = read_lines_char_count( source.as_slice() );
+    let lines = read_lines_char_count( &source[..] );
     FilemapEntry { path     : path
                  , name     : name
                  , end_loc  : CharOffset( source.len() as i32 )
@@ -83,8 +83,8 @@ impl FilemapEntry {
                         let r : &Path = &v;
                         r
                       } )
-                  , name  : self.name.as_slice()
-                  , source: self.source.as_slice()
+                  , name  : &self.name[..]
+                  , source: &self.source[..]
                   , line  : line
                   , pos   : pos }
   }

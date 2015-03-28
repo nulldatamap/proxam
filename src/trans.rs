@@ -37,7 +37,7 @@ pub enum TransError {
 
 }
 
-type TResult<T> = Result<T, TransError>;
+pub type TResult<T> = Result<T, TransError>;
 
 #[derive(Debug)]
 pub struct Module {
@@ -679,6 +679,7 @@ impl TypeAnnotator {
                         (nk, v.ty.clone())
                       } )
                       .collect();
+    
     let atmap = HashMap::new();
 
     TypeAnnotator { fntypes: ftmap, argtypes: atmap }.fold_module( module )
