@@ -43,7 +43,7 @@ if_expr := "if" expression "then" expression "else" expression
 let_expr := "let" function ("," function)* "in" expression
 literal := INTEGER
 type_def := "type" TYPE_NAME "=" type
-data_def := "data" TYPE_NAME "=" IDENT ":" type ("," IDENT ":" type)*
+data_def := "data" TYPE_NAME "=" type | ( IDENT ":" type ("," IDENT ":" type)* )
 ```
 
 `op_expr x` referring to the infix operator(s) with a precedence of `x`.
