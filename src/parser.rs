@@ -11,13 +11,13 @@ use ast::{Function, Ident, Type, Expression, ExpressionKind, Literal, uexpr
 // TODO: Fix identation
 
 // ExpressionKind::* => EK::*
+#[allow(non_snake_case)]
 mod EK {
   pub use ast::ExpressionKind::*;
 }
 
 pub struct Parser<'a> {
   items   : Iter<'a, Token>,
-  tokens  : &'a [Token],
   current : Option<&'a Token>,
   checkpoints : Vec<(&'a Token, Iter<'a, Token>)>
 }
@@ -39,8 +39,8 @@ impl ParserError {
   }
 }
 
-const operator_count : usize = 14;
-static operators : [(&'static str, u32); operator_count] =
+const OPERATOR_COUNT : usize = 14;
+static OPERATORS : [(&'static str, u32); OPERATOR_COUNT] =
        [ ("<|", 0), ("|>", 0) // Lowest precedence
        , ("=", 1)
        , ("==", 2), ("!=", 2)
@@ -55,8 +55,7 @@ pub type PResult<T> = Result<T, ParserError>;
 impl<'a> Parser<'a> {
   fn new( name : &'a str, src : &'a str, tokens : &'a[Token] )
      -> Parser<'a> {
-    Parser { tokens: tokens
-           , items: tokens.iter()
+    Parser { items: tokens.iter()
                       // Garbage initial token
            , current: None
            , checkpoints: Vec::new() }
@@ -363,8 +362,8 @@ impl<'a> Parser<'a> {
   }
 
   fn op_expr( &mut self, op_precedence : u32 ) -> PResult<Expression> {
-    // Get all the operators that match the current precedence level.
-    let mut ops = operators.iter()
+    // Get all the OPERATORS that match the current precedence level.
+    let mut ops = OPERATORS.iter()
                            .filter( |&&(_, prec)| prec == op_precedence );
     
     let mut lhs = try!( self.lower_op_expr( op_precedence ) );
@@ -388,7 +387,7 @@ impl<'a> Parser<'a> {
   }
 
   fn lower_op_expr( &mut self, op_precedence : u32 ) -> PResult<Expression> {
-    if op_precedence == operator_count as u32 - 1 {
+    if op_precedence == OPERATOR_COUNT as u32 - 1 {
       self.low_expr()
     } else {
       self.op_expr( op_precedence + 1 )

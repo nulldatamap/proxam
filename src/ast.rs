@@ -46,23 +46,23 @@ impl fmt::Debug for Type {
       &Type::Unit => write!( f, "()" ),
       &Type::Unique( ref id, ref ty ) => write!( f, "{}:{:?}", id.text, ty ),
       &Type::Structure( ref pairs ) => {
-        write!( f, "{{" );
+        let _ = write!( f, "{{" );
         for &(ref id, ref ty) in pairs {
-          write!( f, "{} : {:?},", id.text, ty );
+          let _ = write!( f, "{} : {:?},", id.text, ty );
         }
         write!( f, "}}" )
       },
       &Type::Tuple( ref els ) => {
-        write!( f, "(" );
+        let _ = write!( f, "(" );
         for el in els { 
-          write!( f, "{:?}, ", el );
+          let _ = write!( f, "{:?}, ", el );
         }
         write!( f, ")" )
       },
       &Type::List( ref t ) => write!( f, "[{:?}]", t ),
       &Type::Fn( ref args, ref r ) => {
         for el in args { 
-          write!( f, "{:?}, ", el );
+          let _ = write!( f, "{:?}, ", el );
         }
         write!( f, "-> {:?}", r )
       },
@@ -99,15 +99,6 @@ impl Type {
     }
   }
 
-  // Converts a NON-FUNCTION type to a function type
-  pub fn to_fn( &mut self ) {
-    let t = replace( self, Type::Untyped );
-    *self = match t {
-      Type::Fn( .. ) => t,
-      _ => Type::Fn( Vec::new(), Box::new( t ) )
-    };
-  }
-
   pub fn is_call_coercible( &self, ty : &Type ) -> bool {
     match self {
       &Type::Fn( .. ) => {
@@ -126,31 +117,6 @@ impl Type {
       &Type::Fn( .. ) => true,
       _ => false
     }
-  }
-
-  pub fn is_generic( &self ) -> bool {
-    let mut itg = IsTypeGeneric{ answer: false };
-    itg.visit_ty( self );
-    itg.answer
-  }
-  
-}
-
-struct IsTypeGeneric {
-  answer : bool,
-}
-
-impl<'a> Visitor<'a> for IsTypeGeneric {
-
-  fn visit_ty_generic( &mut self, v : (&'a Ident, &'a [Ident]) ) {
-
-    self.answer = true;
-  }
-
-  // We keep folding until we either have reached each node or 
-  // until we get a positive answer
-  fn is_done_visiting( &mut self ) -> bool {
-    self.answer
   }
 
 }
@@ -245,25 +211,8 @@ impl Name {
     *self.name.last_mut().unwrap() = name;
   }
 
-  pub fn scope( &mut self, scpe : &mut Vec<String> ) {
-    let mut end = replace( &mut self.name, scpe.clone() );
-    self.name.append( &mut end );
-  }
-
   pub fn ident_child( &self, name : &Ident ) -> Name {
     Name::from_ident( name, Some( self.name.clone() ) )
-  }
-
-  pub fn matches( &self, scope : &Name, name : &str ) -> bool {
-    // Check if they origin scope and the name matches the Name
-    // without having to allocate a whole new Name to check against
-    self.name.init() == &scope.name[..] && self.name.last()
-                                                    .map( |v| &v[..] == name )
-                                                    .unwrap_or( false )
-  }
-
-  pub fn is_toplevel( &self ) -> bool {
-    self.name.len() <= 1
   }
 
   pub fn no_loc( &mut self ) {
@@ -272,14 +221,6 @@ impl Name {
 
   pub fn same( &self, other : &Name ) -> bool {
     self.name == other.name
-  }
-
-  pub fn top_name( &self ) -> &String {
-    self.name.last().expect( "A non-empty Name" )
-  }
-
-  pub fn top_name_matches( &self, n : &str ) -> bool {
-    &self.top_name()[..] == n
   }
 
 }

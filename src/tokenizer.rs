@@ -134,8 +134,6 @@ pub struct Tokenizer<'a> {
 pub enum TokenizerError {
   // We were trying to parse a token when we ran out of characters
   UnexpectedEof,
-  // We were trying to parse a token when the line ended
-  UnexpectedEol( CharLoc ),
   // We found a character that doesn't fit any of the tokenizing rules
   InvalidToken( CharLoc )
 }
@@ -189,23 +187,23 @@ fn is_type_name( s : &str ) -> bool {
   s.char_at( 0 ).is_uppercase()
 }
 
-static multi_symbol_chrs : [char; 25] = [ '!', '#', '%', '&', '/', '=', '?'
+static MULTI_SYMBOL_CHRS : [char; 25] = [ '!', '#', '%', '&', '/', '=', '?'
                                          , '`', '´', '@', '$', '{', '}', '|'
                                          , '~', '^', '*', '<', '>', ',', '.'
                                          , ':', '-', '+',  '\\' ];
 
-static single_symbol_chrs : [char; 4] = [ '(', ')', '[', ']' ];
+static SINGLE_SYMBOL_CHRS : [char; 4] = [ '(', ')', '[', ']' ];
 
 fn is_symbol_chr( chr : char ) -> bool {
   is_multi_symbol_chr( chr ) || is_single_symbol_chr( chr )
 }
 
 fn is_multi_symbol_chr( chr : char ) -> bool {
-  multi_symbol_chrs.contains( &chr )
+  MULTI_SYMBOL_CHRS.contains( &chr )
 }
 
 fn is_single_symbol_chr( chr : char ) -> bool {
-  single_symbol_chrs.contains( &chr )
+  SINGLE_SYMBOL_CHRS.contains( &chr )
 }
 
 impl<'a> Tokenizer<'a> {

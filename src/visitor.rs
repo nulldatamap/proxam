@@ -3,6 +3,7 @@ use ast::{Type, Expression, ExpressionKind, Class, Name
 use builtin::{BuiltinType, BuiltinFn};
 use trans::Module;
 
+#[allow(non_snake_case)]
 mod EK {
   pub use ast::ExpressionKind::*;
 }

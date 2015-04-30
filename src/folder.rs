@@ -7,7 +7,7 @@ use ast::{Type, Expression, ExpressionKind, Class, Name
 use builtin::{BuiltinType, BuiltinFn};
 use trans::Module;
 
-
+#[allow(non_snake_case)]
 mod EK {
   pub use ast::ExpressionKind::*;
 }
@@ -348,7 +348,7 @@ pub fn follow_ty<F : Folder>( v : Type, folder : &mut F ) -> Result<Type, <F as 
         Type::Application( i, a )  
       },
     Type::Untyped => {
-      folder.fold_ty_untyped();
+      try!( folder.fold_ty_untyped() );
       Type::Untyped
     }
   } )
@@ -443,7 +443,7 @@ pub fn follow_class<F : Folder>( mut v : Class, folder : &mut F ) -> Result<Clas
 
 
 pub fn follow_expr<F : Folder>( mut v : Expression, folder : &mut F ) -> Result<Expression, <F as Folder>::Failure> {
-  let Expression { kind: mut kind, ty: mut ty } = v;
+  let Expression { mut kind, mut ty } = v;
   kind = match kind {
     EK::Let( fs, bdy ) => {
         let ((f, b), t) = try!( folder.fold_expr_let( (fs, bdy), ty ) );

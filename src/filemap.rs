@@ -135,19 +135,6 @@ impl Filemap {
             , high_bound: CharLoc( 0 ) }
   }
 
-  pub fn add_from_string( &mut self, name : String, source : String )
-     -> Result<CharLoc, FileMapError> {
-    let fme = FilemapEntry::new( name, None, source, self.high_bound );
-
-    self.high_bound = self.high_bound.offset_by( fme.end_loc );
-
-    let r = fme.start_loc;
-
-    self.files.push( fme );
-
-    Ok( r )
-  }
-
   pub fn add_from_file( &mut self, name : String, path : PathBuf )
      -> Result<CharLoc, FileMapError> {
     let mut file = try!( File::open( &path ) );

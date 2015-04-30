@@ -14,6 +14,7 @@ use trans::{Module};
 type ValueMap = HashMap<String, ValueRef>;
 
 // ExpressionKind::* => EK::*
+#[allow(non_snake_case)]
 mod EK {
   pub use ast::ExpressionKind::*;
 }

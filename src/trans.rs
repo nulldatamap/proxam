@@ -2,13 +2,14 @@ use std::collections::hash_map::{HashMap, Entry, Keys};
 use std::mem::replace;
 
 use ast::{Function, Type, Expression, Ident, Name, uexpr, Item, TypeDefinition};
-use builtin::{BuiltinType, BuiltinFn, builtin_type, builtin_fn};
+use builtin::{BuiltinType, BuiltinFn, builtin_fn};
 use folder::{self, Folder};
 use visitor::Visitor;
 
 // Code transformation and validation
 
 // EK::* => ExpressionKind::*
+#[allow(non_snake_case)]
 mod EK {
   pub use ast::ExpressionKind::*;
 }
@@ -21,7 +22,6 @@ mod EK {
 
 #[derive(Debug)]
 pub enum TransError {
-  UndeclaredFunction( Function ),
   AlreadyDeclaredFunction( Function, Function ),
   AlreadyDefinedFunction( Function, Function ),
   FunctionTypeNotMatching( Function, Function ),
@@ -30,7 +30,6 @@ pub enum TransError {
   AlreadyDefinedType( Name, Type, Type ),
 
   UndefinedName( Name ),
-  UndefinedType( Ident ),
 
   IncosistentIfBranches( Expression ),
   IncorrectType( Expression, Type ),
@@ -243,46 +242,6 @@ impl Module {
     Ok( () )
   }
 
-  fn validate_names( &self ) -> TResult<()> {
-
-    for fun in self.functions.values() {
-      if let Some( ref bdy ) = fun.body {
-        try!( self.validate_name_expr( bdy ) )
-      }
-    }
-
-    Ok( () )
-  }
-
-  fn validate_name_expr( &self, expr : &Expression ) -> TResult<()> {
-    match &expr.kind {
-      &EK::Literal( .. ) 
-      | &EK::Arg( .. )
-      | &EK::BuiltinFn( .. ) => {}, // *BING* SKIP!
-      &EK::Apply( ref exprs ) => {
-        for e in exprs.iter() {
-          try!( self.validate_name_expr( e ) );
-        }
-      },
-      &EK::If( ref cnd, ref thn, ref els ) => {
-        try!( self.validate_name_expr( &**cnd ) );
-        try!( self.validate_name_expr( &**thn ) );
-        try!( self.validate_name_expr( &**els ) );
-      },
-      &EK::Named( ref name ) => {
-        let mut noloc_name = name.clone();
-        noloc_name.no_loc();
-
-        if !self.functions.keys().any( |k| k.same( &noloc_name ) ) {
-          return Err( TransError::UndefinedName( name.clone() ) )
-        }
-      },
-      inv => panic!( "Name validation is not implemented for: {:?}", inv )
-    }
-
-    Ok( () )
-  }
-
   fn resolve_applications( &mut self ) -> TResult<()> {
 
     for (_, fun) in self.functions.iter_mut() {
@@ -336,52 +295,6 @@ resolution: {:?}", inv )
                        , ekind )
     }
 
-    Ok( () )
-  }
-
-  fn resolve_types( &mut self ) -> TResult<()> {
-
-    for (n, fun) in self.functions.iter_mut() {
-      try!( Module::resolve_type( &mut fun.ty ) );
-      fun.ty.to_fn();
-    }
-
-    Ok( () )
-  }
-
-  fn resolve_type( ty : &mut Type ) -> TResult<()> {
-    match ty {
-      &mut Type::NamedType( .. ) => {
-        // Unit is only a place-holder here
-        if let Type::NamedType( ty_name ) = replace( ty, Type::Unit ) {
-          if let Some( bit ) = builtin_type( &ty_name ) {
-            *ty = Type::BuiltinType( bit );
-          /*} else if let Some( ty ) = {*/
-
-          } else {
-            return Err( TransError::UndefinedType( ty_name ) )
-          }
-        }
-      },
-      &mut Type::Unit
-      | &mut Type::BuiltinType( .. ) => {},
-      &mut Type::Tuple( ref mut elms ) => {
-        for elm in elms.iter_mut() {
-          try!( Module::resolve_type( elm ) );
-        }
-      },
-      &mut Type::List( ref mut inner ) => {
-        try!( Module::resolve_type( &mut **inner ) );
-      },
-      &mut Type::Fn( ref mut args, ref mut ret ) => {
-        for arg in args.iter_mut() {
-          try!( Module::resolve_type( arg ) );
-        }
-
-        try!( Module::resolve_type( &mut **ret ) );
-      },
-      inv => panic!( "Type resolution not implemented for: {:?}", inv )
-    }
     Ok( () )
   }
 
@@ -598,8 +511,6 @@ resolution: {:?}", inv )
         return Err( TransError::IncorrectType( errexpr, ty.clone() ) )
       }
     }
-
-    Ok( () )
   }
 
 }
@@ -636,49 +547,6 @@ impl<'a> NameValidator<'a> {
     }
   }
 }
-
-struct TypeResolver<'a> {
-  types : &'a HashMap<Name, Type>
-}
-
-
-// TODO: We have to resolve the types in the definitions
-//       but we use the definitions themselves to do so!
-impl<'a> Folder for TypeResolver<'a> {
-  type Failure = TransError;
-
-  fn fold_ty( &mut self, mut ty : Type ) -> TResult<Type> {
-    // If the type is a NamedType, try to resolve that name
-    if let Type::NamedType( nam ) = ty {
-      let mut nnam = Name::from_ident( &nam, None );
-      nnam.no_loc();
-      // It can either be a builtin type
-      if let Some( bit ) = builtin_type( &nam ) {
-        Ok( Type::BuiltinType( bit ) )
-      // A user defined type
-      } else if let Some( ref ty ) = self.types.get( &nnam ) {
-        Ok( (*ty).clone() )
-      // Else it's an undefined type
-      } else {
-        Err( TransError::UndefinedType( nam ) )
-      }
-    // If the type isn't a NamedType keep walking the structure
-    } else {
-      folder::follow_ty( ty, self )
-    }
-  }
-}
-
-/* NOT A PART OF THE CODE DUE TO FEATURE-LOCK
-
-impl<'a> TypeResolver<'a> {
-  fn resolve( module : &Module ) -> TResult<Module> {
-    let mut resolver = TypeResolver { types: &module.types };
-    resolver.fold_module( module )
-  }
-}
-
-*/
 
 struct TypeAnnotator {
   fntypes : HashMap<Name, Type>,
