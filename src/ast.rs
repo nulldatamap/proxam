@@ -257,9 +257,9 @@ impl Name {
   pub fn matches( &self, scope : &Name, name : &str ) -> bool {
     // Check if they origin scope and the name matches the Name
     // without having to allocate a whole new Name to check against
-    self.name.init() == scope.name && self.name.last()
-                                               .map( |v| &v[..] == name )
-                                               .unwrap_or( false )
+    self.name.init() == &scope.name[..] && self.name.last()
+                                                    .map( |v| &v[..] == name )
+                                                    .unwrap_or( false )
   }
 
   pub fn is_toplevel( &self ) -> bool {
@@ -326,6 +326,24 @@ pub fn uexpr( ek : ExpressionKind ) -> Expression {
 pub enum TypeDefinition {
   Alias( Ident, Type ),
   Data( Type )
+}
+
+impl TypeDefinition {
+  pub fn name( &self ) -> &Ident {
+    match self {
+      &TypeDefinition::Alias( ref nam, _ ) => nam,
+      &TypeDefinition::Data( Type::Unique( ref nam, _ ) ) => nam,
+      inv => panic!( "Can't get the name of the type: {:?}", inv )
+    }
+  }
+
+  pub fn inner( self ) -> Type {
+    match self {
+      TypeDefinition::Alias( _, inr ) => inr,
+      TypeDefinition::Data( inr ) => inr 
+    }
+  }
+
 }
 
 #[derive(Debug)]

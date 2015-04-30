@@ -27,6 +27,8 @@ pub enum TransError {
   FunctionTypeNotMatching( Function, Function ),
   InvalidArgumentList( Function ),
 
+  AlreadyDefinedType( Name, Type, Type ),
+
   UndefinedName( Name ),
   UndefinedType( Ident ),
 
@@ -43,7 +45,7 @@ pub type TResult<T> = Result<T, TransError>;
 pub struct Module {
   pub name      : String,
   pub functions : HashMap<Name, Function>,
-  pub types     : HashMap<Name, TypeDefinition>
+  pub types     : HashMap<Name, Type>
   // data structures
 }
 
@@ -66,6 +68,7 @@ impl Module {
     }
 
     let entry = self.functions.entry( fnam );
+    
     match entry {
       Entry::Vacant( va ) => { va.insert( fun ); },
       Entry::Occupied( mut oc ) => {
@@ -97,6 +100,21 @@ impl Module {
           }
         }
       }
+    }
+
+    Ok( () )
+  }
+
+  fn insert_type_def( &mut self, tydef : TypeDefinition ) -> TResult<()> {
+    let mut nam = Name::from_ident( tydef.name(), None );
+    nam.no_loc();
+
+    match self.types.entry( nam.clone() ) {
+      Entry::Vacant( va ) => { va.insert( tydef.inner() ); },
+      Entry::Occupied( mut oc ) =>
+        return Err( TransError::AlreadyDefinedType( nam
+                                                  , tydef.inner()
+                                                  , oc.remove() ) )
     }
 
     Ok( () )
@@ -338,6 +356,8 @@ resolution: {:?}", inv )
         if let Type::NamedType( ty_name ) = replace( ty, Type::Unit ) {
           if let Some( bit ) = builtin_type( &ty_name ) {
             *ty = Type::BuiltinType( bit );
+          /*} else if let Some( ty ) = {*/
+
           } else {
             return Err( TransError::UndefinedType( ty_name ) )
           }
@@ -617,6 +637,49 @@ impl<'a> NameValidator<'a> {
   }
 }
 
+struct TypeResolver<'a> {
+  types : &'a HashMap<Name, Type>
+}
+
+
+// TODO: We have to resolve the types in the definitions
+//       but we use the definitions themselves to do so!
+impl<'a> Folder for TypeResolver<'a> {
+  type Failure = TransError;
+
+  fn fold_ty( &mut self, mut ty : Type ) -> TResult<Type> {
+    // If the type is a NamedType, try to resolve that name
+    if let Type::NamedType( nam ) = ty {
+      let mut nnam = Name::from_ident( &nam, None );
+      nnam.no_loc();
+      // It can either be a builtin type
+      if let Some( bit ) = builtin_type( &nam ) {
+        Ok( Type::BuiltinType( bit ) )
+      // A user defined type
+      } else if let Some( ref ty ) = self.types.get( &nnam ) {
+        Ok( (*ty).clone() )
+      // Else it's an undefined type
+      } else {
+        Err( TransError::UndefinedType( nam ) )
+      }
+    // If the type isn't a NamedType keep walking the structure
+    } else {
+      folder::follow_ty( ty, self )
+    }
+  }
+}
+
+/* NOT A PART OF THE CODE DUE TO FEATURE-LOCK
+
+impl<'a> TypeResolver<'a> {
+  fn resolve( module : &Module ) -> TResult<Module> {
+    let mut resolver = TypeResolver { types: &module.types };
+    resolver.fold_module( module )
+  }
+}
+
+*/
+
 struct TypeAnnotator {
   fntypes : HashMap<Name, Type>,
   argtypes : HashMap<Name, Type>
@@ -695,6 +758,9 @@ impl TypeAnnotator {
   }
 }
 
+// TODO: Add cyclic data structure detection
+// TODO: Add Module::types to both folder and visitor
+
 pub fn validate_module( name : String, items : Vec<Item> )
        -> TResult<Module> {
   let mut module = Module::new( name );
@@ -702,14 +768,14 @@ pub fn validate_module( name : String, items : Vec<Item> )
   for item in items.into_iter() {
     match item {
       Item::Fn( fun ) => try!( module.insert_toplevel_fn( fun ) ),
-      Item::Type( ty ) => println!( "Discarded type definition: {:?}", ty )
+      Item::Type( ty ) => try!( module.insert_type_def( ty ) )
     }
   }
 
   try!( module.resolve_namespaces() );
   try!( NameValidator::validate( &module ) );
   try!( module.resolve_applications() );
-  try!( module.resolve_types() );
+  // try!( module.resolve_types() );
   module = try!( TypeAnnotator::annotate( module ) );
   try!( module.check_types() );
   

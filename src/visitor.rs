@@ -18,6 +18,11 @@ pub trait Visitor<'a> : Sized {
     walk_fn( v, self )
   }
 
+  fn visit_typedef( &mut self, v : (&'a Name, &'a Type) ) {
+    if self.is_done_visiting() { return }
+    walk_typedef( v, self )
+  }
+
   fn visit_ident( &mut self, v : &'a Ident ) {
   }
 
@@ -176,6 +181,10 @@ pub trait Visitor<'a> : Sized {
 }
 
 pub fn walk_module<'a, V : Visitor<'a>>( v : &'a Module, visitor : &mut V ) {
+  for nt in v.types.iter() {
+    visitor.visit_typedef( nt );
+  }
+
   for f in v.functions.values() {
     visitor.visit_fn( f );
   }
@@ -197,6 +206,11 @@ pub fn walk_fn<'a, V : Visitor<'a>>( v : &'a Function, visitor : &mut V ) {
   for cls in v.constraints.iter() {
     visitor.visit_class( cls )
   }
+}
+
+pub fn walk_typedef<'a, V : Visitor<'a>>( (n, t) : (&'a Name, &'a Type), visitor : &mut V ) {
+  visitor.visit_name( n );
+  visitor.visit_ty( t );
 }
 
 pub fn walk_ty<'a, V : Visitor<'a>>( v : &'a Type, visitor : &mut V ) {

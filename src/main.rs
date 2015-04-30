@@ -1,7 +1,7 @@
 #![feature(rustc_private)]
 // TOOD: Remove these warning suppressors
 #![allow(unused_imports, unused_variables, unused_mut)]
-#![feature(str_char, core, collections)]
+#![feature(str_char, collections, slice_patterns)]
 
 #[macro_use]
 extern crate version;

@@ -1,7 +1,7 @@
 
 ; Yay the syntax is getting parsed correctly!
 
-type Years = Int
+; type Years = Int
 
 ; UniqueType( 'Years', <Int> )
 data Years = Int
@@ -19,7 +19,7 @@ data FamilyMember =
   name : String,
   age  : Int
 
-def id x : Int -> Int = x
+def id x : Years -> Years = x
 
 ; Defined in the runtime
 def print_int x : Int -> ()

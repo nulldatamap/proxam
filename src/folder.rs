@@ -7,6 +7,7 @@ use ast::{Type, Expression, ExpressionKind, Class, Name
 use builtin::{BuiltinType, BuiltinFn};
 use trans::Module;
 
+
 mod EK {
   pub use ast::ExpressionKind::*;
 }
@@ -81,6 +82,11 @@ pub trait Folder : Sized {
   fn fold_fn( &mut self, v : Function ) -> Result<Function, Self::Failure> {
     if self.is_done_folding() { return Ok( v ) }
     follow_fn( v, self )
+  }
+
+  fn fold_typedef( &mut self, v : (&Name, Type) ) -> Result<Type, Self::Failure> {
+    if self.is_done_folding() { return Ok( v.1 ) }
+    follow_typedef( v, self )
   }
 
   fn fold_ident( &mut self, v : Ident ) -> Result<Ident, Self::Failure> {
@@ -247,10 +253,16 @@ pub trait Folder : Sized {
 }
 
 pub fn follow_module<F : Folder>( mut v : Module, folder : &mut F ) -> Result<Module, <F as Folder>::Failure> {
-  for (_, v) in v.functions.iter_mut() {
-    let f = replace( v, Function::empty() );
-    *v = try!( folder.fold_fn( f ) );
+  for (n, t) in v.types.iter_mut() {
+    let ty = replace( t, Type::Untyped );
+    *t = try!( folder.fold_typedef( (n, ty) ) );
   }
+
+  for (_, f) in v.functions.iter_mut() {
+    let fun = replace( f, Function::empty() );
+    *f = try!( folder.fold_fn( fun ) );
+  }
+
   Ok( v )
 }
 
@@ -286,6 +298,10 @@ pub fn follow_fn<F : Folder>( mut v : Function, folder : &mut F ) -> Result<Func
 
   v.constraints = try!( v.constraints.try_map( |c| folder.fold_class( c ) ) );
   Ok( v )
+}
+
+pub fn follow_typedef<F : Folder>( (n, t) : (&Name, Type), folder : &mut F ) -> Result<Type, <F as Folder>::Failure> {
+  folder.fold_ty( t )
 }
 
 

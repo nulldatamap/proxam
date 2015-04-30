@@ -1,4 +1,4 @@
-use std::error::FromError;
+use std::convert::From;
 use std::path::{PathBuf, Path};
 use std::io::Error as IoError;
 use std::io::Read;
@@ -109,8 +109,8 @@ pub enum FileMapError {
   IoError( IoError )
 }
 
-impl FromError<IoError> for FileMapError {
-  fn from_error( err : IoError ) -> FileMapError {
+impl From<IoError> for FileMapError {
+  fn from( err : IoError ) -> FileMapError {
     FileMapError::IoError( err )
   }
 }
