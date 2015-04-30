@@ -21,6 +21,14 @@ impl BuiltinType {
   }
 }
 
+pub fn builtin_type( tn : &Ident ) -> Option<BuiltinType> {
+  Some( match &tn.text[..] {
+    "Int" => BuiltinType::Int,
+    "Bool" => BuiltinType::Bool,
+    _ => return None
+  } )
+}
+
 #[derive(Debug, Clone)]
 pub enum BuiltinFn {
   Add, Sub, Div, Mul, Mod,

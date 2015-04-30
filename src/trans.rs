@@ -2,7 +2,7 @@ use std::collections::hash_map::{HashMap, Entry, Keys};
 use std::mem::replace;
 
 use ast::{Function, Type, Expression, Ident, Name, uexpr, Item, TypeDefinition};
-use builtin::{BuiltinType, BuiltinFn, builtin_fn};
+use builtin::{BuiltinType, BuiltinFn, builtin_type, builtin_fn};
 use folder::{self, Folder};
 use visitor::Visitor;
 
@@ -30,6 +30,7 @@ pub enum TransError {
   AlreadyDefinedType( Name, Type, Type ),
 
   UndefinedName( Name ),
+  UndefinedType( Ident ),
 
   IncosistentIfBranches( Expression ),
   IncorrectType( Expression, Type ),
@@ -295,6 +296,52 @@ resolution: {:?}", inv )
                        , ekind )
     }
 
+    Ok( () )
+  }
+
+  fn resolve_types( &mut self ) -> TResult<()> {
+
+    for (n, fun) in self.functions.iter_mut() {
+      try!( Module::resolve_type( &mut fun.ty ) );
+      fun.ty.to_fn();
+    }
+
+    Ok( () )
+  }
+
+  fn resolve_type( ty : &mut Type ) -> TResult<()> {
+    match ty {
+      &mut Type::NamedType( .. ) => {
+        // Unit is only a place-holder here
+        if let Type::NamedType( ty_name ) = replace( ty, Type::Unit ) {
+          if let Some( bit ) = builtin_type( &ty_name ) {
+            *ty = Type::BuiltinType( bit );
+          /*} else if let Some( ty ) = {*/
+
+          } else {
+            return Err( TransError::UndefinedType( ty_name ) )
+          }
+        }
+      },
+      &mut Type::Unit
+      | &mut Type::BuiltinType( .. ) => {},
+      &mut Type::Tuple( ref mut elms ) => {
+        for elm in elms.iter_mut() {
+          try!( Module::resolve_type( elm ) );
+        }
+      },
+      &mut Type::List( ref mut inner ) => {
+        try!( Module::resolve_type( &mut **inner ) );
+      },
+      &mut Type::Fn( ref mut args, ref mut ret ) => {
+        for arg in args.iter_mut() {
+          try!( Module::resolve_type( arg ) );
+        }
+
+        try!( Module::resolve_type( &mut **ret ) );
+      },
+      inv => panic!( "Type resolution not implemented for: {:?}", inv )
+    }
     Ok( () )
   }
 
@@ -643,7 +690,7 @@ pub fn validate_module( name : String, items : Vec<Item> )
   try!( module.resolve_namespaces() );
   try!( NameValidator::validate( &module ) );
   try!( module.resolve_applications() );
-  // try!( module.resolve_types() );
+  try!( module.resolve_types() );
   module = try!( TypeAnnotator::annotate( module ) );
   try!( module.check_types() );
   

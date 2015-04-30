@@ -112,6 +112,15 @@ impl Type {
     }
   }
 
+  // Converts a NON-FUNCTION type to a function type
+  pub fn to_fn( &mut self ) {
+    let t = replace( self, Type::Untyped );
+    *self = match t {
+      Type::Fn( .. ) => t,
+      _ => Type::Fn( Vec::new(), Box::new( t ) )
+    };
+  }
+
   pub fn is_fn_type( &self ) -> bool {
     match self {
       &Type::Fn( .. ) => true,

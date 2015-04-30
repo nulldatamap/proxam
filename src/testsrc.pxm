@@ -1,26 +1,6 @@
 
 ; Yay the syntax is getting parsed correctly!
 
-; type Years = Int
-
-; UniqueType( 'Years', <Int> )
-data Years = Int
-
-; UniqueType( 'User', box Structure( [ 'name', 'age' ]
-;                                  , [ <String>, <Int> ] ) )
-
-data User =
-  name : String,
-  age  : Int
-
-; UniqueType( 'FamilyMember', box Structure( [ 'name', 'age' ]
-;                                          , [ <String>, <Int> ] ) )
-data FamilyMember = 
-  name : String,
-  age  : Int
-
-def id x : Years -> Years = x
-
 ; Defined in the runtime
 def print_int x : Int -> ()
 
