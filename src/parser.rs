@@ -53,7 +53,7 @@ static OPERATORS : [(&'static str, u32); OPERATOR_COUNT] =
 pub type PResult<T> = Result<T, ParserError>;
 
 impl<'a> Parser<'a> {
-  fn new( name : &'a str, src : &'a str, tokens : &'a[Token] )
+  fn new( name : &'a str, tokens : &'a[Token] )
      -> Parser<'a> {
     Parser { items: tokens.iter()
                       // Garbage initial token
@@ -61,9 +61,9 @@ impl<'a> Parser<'a> {
            , checkpoints: Vec::new() }
   }
 
-  pub fn parse( name : &'a str, src : &'a str, tokens : &'a[Token] )
+  pub fn parse( name : &'a str, tokens : &'a[Token] )
      -> PResult<Vec<Item>> {
-    let mut parser = Parser::new( name, src, tokens );
+    let mut parser = Parser::new( name, tokens );
     parser.start()
   }
 
