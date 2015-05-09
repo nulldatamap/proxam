@@ -30,15 +30,26 @@ mod test;
 fn main() {
   use std::path::PathBuf;
 
-  println!( "Proxam compiler v{}", version!() );
-
-  let test_name = "<test>";
-  let test_module_name = "helloworld";
+  let src_name = "<main>";
+  let src_module_name = "main";
 
   let mut filemap = filemap::Filemap::new();
   let mut path = PathBuf::new();
-  path.push( "src/testsrc.pxm" );
-  let fstart = match filemap.add_from_file( test_name.to_string()
+  let pargs : Vec<String> = std::env::args().collect();
+  // Try to read the file-name from the program arguments
+  match &pargs[..] {
+    [ _, ref n ] => {
+      // Set the file path to be the one specified in the program arguments
+      path.push( n );
+    },
+    _ => {
+      println!( "Invalid arguments.\nExpected: proxam <file>" );
+      return
+    }
+  }
+
+  // First we register the input file into the file-map
+  let fstart = match filemap.add_from_file( src_name.to_string()
                                           , path ) {
       Ok( s ) => s,
       Err( err ) => {
@@ -47,8 +58,10 @@ fn main() {
       }
   };
 
+  // Then get it's file-map start location
   let fdes = filemap.get_charloc( fstart ).unwrap();
 
+  // Start the tokenizer at our file's location
   let tks = match Tokenizer::tokenize( fdes.source, fstart ) {
     Ok( tks ) => tks,
     Err( err ) => {
@@ -57,11 +70,13 @@ fn main() {
     }
   };
 
-  let ast = match Parser::parse( test_name, fdes.source, &tks[..] ) {
+  // Proceed to parse the tokens
+  let ast = match Parser::parse( src_name, fdes.source, &tks[..] ) {
     Ok( ast ) => ast,
     Err( err ) => {
       println!( "Failed to parse: {:?}", err );
       match err {
+        // Report the error if it goes wrong
         parser::ParserError::SyntaxError( tk, _, _ ) => {
           let cld = filemap.get_charloc( tk.loc() ).unwrap();
           println!("At {}:{}", cld.line, cld.pos );
@@ -72,9 +87,8 @@ fn main() {
     }
   };
 
-  //println!( "=> {:?}", ast );
-
-  let module = match trans::validate_module( test_module_name.to_string()
+  // Validate and transform the module
+  let module = match trans::validate_module( src_module_name.to_string()
                                            , ast ) {
     Ok( md ) => md,
     Err( err ) => {
@@ -83,10 +97,10 @@ fn main() {
     }
   };
 
-  println!("=> {:?}", module );
-
+  // And generate the LLVM IR code 
   let llmodule = Codegen::generate_module( module );
 
+  // Output the IR in human readable format
   unsafe {
     rustc::llvm::LLVMDumpModule( llmodule );
   }

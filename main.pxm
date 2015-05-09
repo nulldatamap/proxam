@@ -1,6 +1,4 @@
 
-; Yay the syntax is getting parsed correctly!
-
 ; Defined in the runtime
 def print_int x : Int -> ()
 
