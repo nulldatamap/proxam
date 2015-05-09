@@ -82,14 +82,14 @@ fn main() {
     let mut items = match Parser::parse( src_name, &tks[..] ) {
       Ok( ast ) => ast,
       Err( err ) => {
-        println!( "Failed to parse: {:?}", err );
         match err {
           // Report the error if it goes wrong
-          parser::ParserError::SyntaxError( tk, _, _ ) => {
+          parser::ParserError::SyntaxError( tk, g, e ) => {
             let cld = filemap.get_charloc( tk.loc() ).unwrap();
-            println!("At {}:{}", cld.line, cld.pos );
+            println!( "While parsing {}, expected {}:\nGot '{}' at {}:{}"
+                    , g, e, tk.as_string(), cld.line, cld.pos );
           },
-          _ => {}
+          _ => println!( "Failed to parse: {:?}", err )
         }
         return
       }

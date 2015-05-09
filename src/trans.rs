@@ -440,7 +440,6 @@ resolution: {:?}", inv )
   fn type_check_function_call( callee : &mut Expression
                              , args   : &mut Vec<Expression>
                              , ety    : &mut Type ) -> TResult<()> {
-
     // Then make sure we're not trying to call a non-function
     if !callee.ty.is_fn_type() {
       // Just a bug test
@@ -455,10 +454,12 @@ resolution: {:?}", inv )
       return Err( TransError::UncallableValue( errexpr ) )
     }
 
+
     // Check for partial application
     if callee.ty.argument_count() > args.len() {
       panic!( "Partial application is not implemented: {:?}", callee )
     }
+
 
     // Check for over-application
     if callee.ty.argument_count() < args.len() {

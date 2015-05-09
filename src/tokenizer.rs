@@ -35,6 +35,20 @@ impl Token {
          , loc : loc }
   }
 
+  pub fn as_string( &self ) -> String {
+    match self.kind {
+      TokenKind::Comment( ref s ) => format!( ";{}", s ),
+      TokenKind::Ident( ref s ) => format!( "{}", s ),
+      TokenKind::TypeName( ref s ) => format!( "{}", s ),
+      TokenKind::Symbol( ref s ) => format!( "{}", s ),
+      TokenKind::Literal( Literal::Integer( i ) ) => format!( "{}", i ),
+      TokenKind::Literal( Literal::Boolean( b ) ) => format!( "{}", b ),
+      TokenKind::Literal( Literal::Unit ) => "()".to_string(),
+      TokenKind::Keyword( ref s ) => format!( "{}", s ),
+      TokenKind::EOF => "<EOF>".to_string()
+    }
+  }
+
   pub fn get_text( &self ) -> String {
     match self.kind {
       TokenKind::Ident( ref s ) => s.clone(),

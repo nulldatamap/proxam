@@ -90,7 +90,7 @@ impl<'a> Parser<'a> {
     } else if let Some( dt ) = try!( self.data_def() ) {
       Ok( Item::Type( dt ) )
     } else {
-      return Err( self.syntax_error( "item", "function definition, type alias\
+      return Err( self.syntax_error( "item", "function definition, type alias \
  or data type definition" ) )
     }
   }

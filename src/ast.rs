@@ -86,7 +86,7 @@ impl Type {
         assert!( idx < args.len() );
         &args[idx]
       },
-      _ => panic!( "{:?} is not a function type.", self )
+      _ => panic!( "{:?} is not a function type!", self )
     }
   }
 
@@ -95,7 +95,7 @@ impl Type {
       &Type::Fn( _, ref ret ) => {
         &**ret
       },
-      _ => panic!( "{:?} is not a function type.", self )
+      _ => self
     }
   }
 
