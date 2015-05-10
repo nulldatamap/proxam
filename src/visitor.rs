@@ -3,6 +3,12 @@ use ast::{Type, Expression, ExpressionKind, Class, Name
 use builtin::{BuiltinType, BuiltinFn};
 use trans::Module;
 
+/*
+  This is an implementation of the visitor pattern;
+  It walks through every branch of the AST and hooks for each
+  kind of node in the tree can be implemented.
+*/
+
 #[allow(non_snake_case)]
 mod EK {
   pub use ast::ExpressionKind::*;

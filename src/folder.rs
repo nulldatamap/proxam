@@ -7,6 +7,14 @@ use ast::{Type, Expression, ExpressionKind, Class, Name
 use builtin::{BuiltinType, BuiltinFn};
 use trans::Module;
 
+/*
+  This is a spin on the visitor pattern, just like visitor it
+  visits each node of the AST, but instead of just visiting it also
+  takes out the value from the tree, enabling us to tranform it, and 
+  then puts it back. This enables us to modify the tree in a type-safe way
+
+*/
+
 #[allow(non_snake_case)]
 mod EK {
   pub use ast::ExpressionKind::*;

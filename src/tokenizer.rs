@@ -5,6 +5,7 @@ use streamreader::{StreamReader, Checkpoint};
 use filemap::{CharLoc, CharOffset, Loc};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+// Represents a literal value
 pub enum Literal {
   Integer( i64 ),
   Boolean( bool ),
@@ -12,6 +13,7 @@ pub enum Literal {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+// Represents a given kind of token
 pub enum TokenKind {
   Comment( String ),
   Ident( String ),
@@ -23,6 +25,7 @@ pub enum TokenKind {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+// A token kind and it's location
 pub struct Token {
   kind : TokenKind,
   loc  : CharLoc
@@ -156,7 +159,7 @@ pub enum TokenizerError {
 pub type TResult<T> = Result<T, TokenizerError>;
 
 // This will chain multiple parsing functions together that
-// may fail in a readable manner
+// may fail, in a readable manner
 macro_rules! fallthrough(
   ( $subj:ident : $token:ident, $($tokens:ident),* ) => (
     try!( $subj.$token()
@@ -232,6 +235,7 @@ impl<'a> Tokenizer<'a> {
     tk.start()
   }
 
+  // Lexes the source code
   fn start( &mut self ) -> TResult<Vec<Token>> {
     let mut tokens = Vec::new();
     // Get the first non-whitespace character

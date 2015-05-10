@@ -10,13 +10,20 @@ use builtin::{BuiltinType, BuiltinFn};
 pub type TLiteral = tokenizer::Literal;
 
 #[derive(Clone, PartialEq)]
+// Represents a type in the AST
 pub enum Type {
+  // A type with an unresolved name
   NamedType( Ident ),
   Unit,
+  // A named type which is destinquished from it's inner type
   Unique( Ident, Box<Type> ),
+  // A set of types with a constant lenggth
   Tuple( Vec<Type> ),
+  // A structure of named type fields
   Structure( Vec<(Ident, Type)> ),
+  // A list of elements all with the same type
   List( Box<Type> ),
+  // A function with a set of arguments and a single return type
   Fn( Vec<Type>, Box<Type> ),
   // A generic type parameter with possible constraints
   Generic( Ident, Vec<Ident> ),
@@ -40,6 +47,7 @@ pub enum Type {
 }
 
 impl fmt::Debug for Type {
+  // An ungly function for debugging types in the AST
   fn fmt( &self, f : &mut fmt::Formatter ) -> Result<(), fmt::Error> {
     match self {
       &Type::NamedType( ref n ) => write!( f, "<{}>", n.text ),
@@ -132,6 +140,7 @@ impl Type {
 
 
 #[derive(Debug, Clone)]
+// A type class
 pub struct Class {
   pub name : Ident,
   pub params : Vec<Type>
@@ -174,6 +183,7 @@ impl Loc for Function {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
+// A name location in a namespace
 pub struct Name {
   pub name : Vec<String>,
   pub loc  : Option<CharLoc>
@@ -235,21 +245,34 @@ impl Name {
 }
 
 #[derive(Debug, Clone)]
+// The representation of an expression in the AST
 pub enum ExpressionKind {
+  // A let-binding, which it's set of bindings and it's body
   Let( Vec<Function>, Box<Expression> ),
+  // A unresolved name
   UnresolvedNamed( Ident ),
+  // An unresolved application
   Apply( Vec<Expression> ),
   // The above will be phased out of the tree
+
+  // An if-expression, with it's condition, then and else body
   If( Box<Expression>, Box<Expression>, Box<Expression> ),
+  // A literal value
   Literal( Literal ),
   // Can't be created from the parser:
+
+  // A function argument
   Arg( Ident ),
+  // A resolved named value
   Named( Name ),
+  // A builtin function
   BuiltinFn( BuiltinFn ),
   // The call nodes are transformed from Apply
+  // A call to an expression that will result in a function
   FnCall( Box<Expression>, Vec<Expression> ),
   // PartialApplication
   // PartialFinsiher
+
   // Appears after type checking
   // Should never appear in a fully built expression
   Invalid
@@ -297,6 +320,7 @@ impl TypeDefinition {
 }
 
 #[derive(Debug)]
+// Either a functino or a type-definition
 pub enum Item {
   Fn( Function ),
   Type( TypeDefinition )
@@ -341,6 +365,7 @@ impl Loc for Literal {
 }
 
 #[derive(Debug, Clone)]
+// A name
 pub struct Ident {
   pub text : String,
   pub loc  : CharLoc

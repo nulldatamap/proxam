@@ -12,16 +12,26 @@ use tokenizer::Tokenizer;
 use parser::Parser;
 use codegen::Codegen;
 
+// Used for storing source files efficiently
 mod filemap;
+// Shared functionality for the tokenizer and parser
 #[macro_use]
 mod streamreader;
+// Used for turning the source code into tokens
 mod tokenizer;
+// Used for parsing the tokens into an AST
 mod parser;
+// The AST and it's functions
 mod ast;
+// Used for visiting the AST
 mod visitor;
+// Used for folding the AST
 mod folder;
+// Used to validate and transform the AST
 mod trans;
+// Definition of all the builtin types and functions
 mod builtin;
+// Used to convert the AST to LLVM IR
 mod codegen;
 
 #[cfg(test)]
@@ -35,6 +45,7 @@ fn main() {
   let src_module_name = "main";
 
   let mut filemap = filemap::Filemap::new();
+
   // Skip the program name
   let pargs : Vec<String> = std::env::args().skip( 1 ).collect();
   if pargs.is_empty() {
@@ -49,6 +60,7 @@ fn main() {
       return
     }
   }
+
 
   let mut ast = Vec::<ast::Item>::new();
 
@@ -95,6 +107,7 @@ fn main() {
       }
     };
 
+    // Add the resulting AST elements from each parse to the AST
     ast.append( &mut items );
   }
 

@@ -14,11 +14,6 @@ mod EK {
   pub use ast::ExpressionKind::*;
 }
 
-/*
-  TODO: Make it so that multiple error can be reported instead
-  of one at a time.
-  Fix identation
-*/
 
 #[derive(Debug)]
 pub enum TransError {
@@ -42,6 +37,7 @@ pub enum TransError {
 pub type TResult<T> = Result<T, TransError>;
 
 #[derive(Debug)]
+// Our AST transformed into an orginized structure
 pub struct Module {
   pub name      : String,
   pub functions : HashMap<Name, Function>,
@@ -58,6 +54,8 @@ impl Module {
     self.insert_fn( fun, &mut Name::root() )
   }
 
+  // Tries to insert a function, if the function has already been defined it
+  // will cause an error
   fn insert_fn( &mut self, fun : Function, scope : &mut Name ) -> TResult<()> {
     let mut fnam = scope.ident_child( &fun.name );
     fnam.no_loc(); // Remove the source location from this name
@@ -120,6 +118,7 @@ impl Module {
     Ok( () )
   }
 
+  // Resovles all names and makes sure that they're defined
   fn resolve_namespaces( &mut self ) -> TResult<()> {
     // A list of all the new bindings that might be added
     let mut binds = Vec::new();
@@ -243,6 +242,7 @@ impl Module {
     Ok( () )
   }
 
+  // Goes through and transforms applications to their specific kind of call
   fn resolve_applications( &mut self ) -> TResult<()> {
 
     for (_, fun) in self.functions.iter_mut() {
@@ -299,6 +299,7 @@ resolution: {:?}", inv )
     Ok( () )
   }
 
+  // Makes sure that all types are correct
   fn resolve_types( &mut self ) -> TResult<()> {
 
     for (n, fun) in self.functions.iter_mut() {
@@ -345,14 +346,8 @@ resolution: {:?}", inv )
     Ok( () )
   }
 
-  /*
-    TODO:
-    "Abstract" function types
-    Type functions ( generics )
-    Partial application
-    Environment capturing
-  */
-
+  // Checks that all annotated types are consisten with the expectation of 
+  // the type signatures
   fn check_types( &mut self ) -> TResult<()> {
     // Walk through the tree nodes, check for expectations and inconsistencies
     // Check function call arguments; partial application, no arguments
@@ -523,6 +518,7 @@ resolution: {:?}", inv )
     Ok( () )
   }
 
+  // Tries to coerce one type into another
   fn coerce_expr( expr : &mut Expression, ty : &Type ) -> TResult<()> {
     // There can be multiple layers of coercion, so we'll keep looping
     loop {
@@ -563,6 +559,7 @@ resolution: {:?}", inv )
 
 }
 
+// Goes through all names an validates them
 struct NameValidator<'a> {
   error : Option<TransError>,
   names : Keys<'a, Name, Function>
@@ -596,6 +593,7 @@ impl<'a> NameValidator<'a> {
   }
 }
 
+// Goes through all expressions and annotate them with their type
 struct TypeAnnotator {
   fntypes : HashMap<Name, Type>,
   argtypes : HashMap<Name, Type>
@@ -674,20 +672,18 @@ impl TypeAnnotator {
   }
 }
 
-// TODO: Add cyclic data structure detection
-// TODO: Add Module::types to both folder and visitor
-
 pub fn validate_module( name : String, items : Vec<Item> )
        -> TResult<Module> {
   let mut module = Module::new( name );
   
+  // Register all items  
   for item in items.into_iter() {
     match item {
       Item::Fn( fun ) => try!( module.insert_toplevel_fn( fun ) ),
       Item::Type( ty ) => try!( module.insert_type_def( ty ) )
     }
   }
-
+  // Run all transformation and validation passes
   try!( module.resolve_namespaces() );
   try!( NameValidator::validate( &module ) );
   try!( module.resolve_applications() );

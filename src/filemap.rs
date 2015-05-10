@@ -5,6 +5,7 @@ use std::io::Read;
 use std::fs::File;
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
+// Represents a characters location in the filemap
 pub struct CharLoc( pub u32 );
 
 impl CharLoc {
@@ -32,6 +33,7 @@ impl CharLoc {
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+// Represents a character offset in the filemap
 pub struct CharOffset( pub i32 );
 
 impl CharOffset {
@@ -45,6 +47,7 @@ pub trait Loc {
   fn loc( &self ) -> CharLoc;
 }
 
+// Creates a vector of offset-length pair for all the lines in a string
 fn read_lines_char_count( src : &str ) -> Vec<(u32, u32)> {
   let mut sum = 0;
   src.lines()
@@ -56,12 +59,19 @@ fn read_lines_char_count( src : &str ) -> Vec<(u32, u32)> {
      .collect()
 }
 
+// The representation of an entry into the filemap
 struct FilemapEntry {
+  // Where the original file is location ( if any )
   path : Option<PathBuf>,
+  // What the name of the entry is
   name : String,
+  // What it's source conent is
   source : String,
+  // It's offset-length pairs of the lines
   lines : Vec<(u32, u32)>,
+  // What the entry's starting location in the filemap is
   start_loc : CharLoc,
+  // Where the entry ends in the filemap
   end_loc : CharOffset
 }
 
@@ -77,6 +87,7 @@ impl FilemapEntry {
                  , start_loc: start_loc }
   }
 
+  // Get's an immutable descriptor ( a reference ) to the entry
   fn as_descriptor<'a>( &'a self, off : CharOffset ) -> LocDescriptor<'a> {
     let (line, pos) = self.get_line_pos( off );
     LocDescriptor { path  : self.path.as_ref().map( |v| {
@@ -89,6 +100,7 @@ impl FilemapEntry {
                   , pos   : pos }
   }
 
+  // Get's the line and position of a given char in the entry
   fn get_line_pos( &self, off : CharOffset ) -> (u32, u32) {
     let offv = off.as_i32();
     let mut line = 1;
@@ -116,6 +128,7 @@ impl From<IoError> for FileMapError {
 }
 
 #[derive(Debug)]
+// A descriptor used to describe the file entry which a given character lies in
 pub struct LocDescriptor<'a> {
   pub path : Option<&'a Path>,
   pub name : &'a str,
@@ -124,6 +137,7 @@ pub struct LocDescriptor<'a> {
   pub pos : u32
 }
 
+// The registry for all source files
 pub struct Filemap {
   files : Vec<FilemapEntry>,
   high_bound : CharLoc
@@ -135,6 +149,7 @@ impl Filemap {
             , high_bound: CharLoc( 0 ) }
   }
 
+  // Adds a file to the registry
   pub fn add_from_file( &mut self, name : String, path : PathBuf )
      -> Result<CharLoc, FileMapError> {
     let mut file = try!( File::open( &path ) );
@@ -151,6 +166,7 @@ impl Filemap {
     Ok( r )
   }
 
+  // Tries to get a descriptor for a given character in the filemap
   pub fn get_charloc<'a>( &'a self, loc : CharLoc )
      -> Result<LocDescriptor<'a>, FileMapError> {
     let entry = try!( self.lookup_charloc( loc ) );

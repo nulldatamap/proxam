@@ -19,6 +19,7 @@ mod EK {
   pub use ast::ExpressionKind::*;
 }
 
+// The structure used for book-keeping while codegen'ing
 pub struct Codegen {
   functions : ValueMap,
   module    : ModuleRef,
@@ -45,6 +46,8 @@ impl Codegen {
             , builder: b }
   }
 
+  // Creates a module context and generates the IR for each function 
+  // in the context
   pub fn generate_module( module : Module ) -> ModuleRef {
     let mut codegen;
 
@@ -66,6 +69,7 @@ impl Codegen {
     codegen.module
   }
 
+  // Generates the defination and body of a function
   fn generate_fns( &mut self, module : Module ) {
     let mut building_parts = Vec::new();
     // Register all the functions so referencing won't be a problem
@@ -80,7 +84,8 @@ impl Codegen {
     }
 
   }
-  
+    
+  // Registers a function into the LLVM context
   fn register_fn( &mut self, fname : String, func : Function )
      -> Option<(ValueRef, Vec<Ident>, Expression)> {
 
@@ -112,6 +117,9 @@ impl Codegen {
     }
   }
 
+  // Builds a function by setting up for a function body
+  // then gernerating the IR for the body expression and then
+  // returning the final value
   fn build_fn( &mut self, llfn : ValueRef, args : Vec<Ident>
              , body : Expression ) {
     unsafe {
@@ -129,7 +137,7 @@ impl Codegen {
 
   //
   // Types
-  //
+  // All the following functions convert Proxam type into their LLVM equivilent
 
   fn get_bare_fn_type( &mut self, args : &[Type], ret : &Type ) -> TypeRef {
     let targs : Vec<TypeRef> = args.iter()
@@ -182,7 +190,7 @@ impl Codegen {
 
   //
   // Expressions
-  //
+  // All the following functions turns Proxam expressions into LLVM instructions
 
   fn get_expression_value( &mut self, fun : ValueRef, args : &[Ident]
                          , expr : Expression ) -> ValueRef {
