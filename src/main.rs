@@ -34,9 +34,6 @@ mod builtin;
 // Used to convert the AST to LLVM IR
 mod codegen;
 
-#[cfg(test)]
-mod test;
-
 fn main() {
   use std::path::{Path, PathBuf};
   use std::fs::PathExt;
