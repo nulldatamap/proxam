@@ -19,6 +19,8 @@ I'm currently working on getting type parameters implement ( generics ) and trai
 Currently correct LLVM-IR is being generated, but optimization passes and native code generation is yet to be moved inside the compiler. 
 
 # How to use
+## NOTE: This is a pre 1.0 Rust application, so the source code doesn't compile anymore.
+
 Currently you need to compile the code using the nightly version of Rust and Cargo. The compiler will spit out the llvm IR, which can be compiled to any llvm supported target using `llc`.
 
 # Syntax example:
